@@ -4,3 +4,6 @@ dist/
 *.log
 .vite/
 .vercel
+
+server/node_modules/
+server/.wrangler/
