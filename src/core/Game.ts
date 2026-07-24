@@ -99,6 +99,8 @@ export class Game {
   private fx: { t: number; run: () => void }[] = [];
   private blastLight!: THREE.PointLight;
   private blast = 0;
+  /** Simulation speed. Dips on a goal and eases back to 1, RL-style. */
+  private timeScale = 1;
 
   private appliedMode = '';
   private appliedMinutes = 0;
@@ -336,11 +338,15 @@ export class Game {
     requestAnimationFrame(loop);
   }
 
-  private frame(dt: number) {
-    this.elapsed += dt;
+  private frame(realDt: number) {
     this.input.poll();
     this.handleGlobalKeys();
     if (this.menu.open) this.menu.update();
+
+    // The goal explosion drops the world into slow motion and winds it back up.
+    if (this.timeScale < 1) this.timeScale = Math.min(1, this.timeScale + realDt * 0.75);
+    const dt = realDt * this.timeScale;
+    this.elapsed += dt;
 
     const running = this.state.phase !== 'paused' && this.state.phase !== 'ended';
     if (running) {
@@ -610,6 +616,9 @@ export class Game {
     this.audio.goal();
     this.chase.addShake(2.0);
     this.blast = 1;
+    // Everything hangs for a beat, then winds back up to full speed.
+    this.timeScale = 0.22;
+    this.blastCars(at);
     this.blastLight.position.copy(at);
     this.blastLight.color.setHex(0xffffff);
 
@@ -723,6 +732,40 @@ export class Game {
     }
   }
 
+  /**
+   * The detonation throws anyone standing near the net. Impulse falls off with
+   * distance and always carries some lift, so cars get launched and tumble
+   * rather than being shoved along the floor.
+   */
+  private blastCars(at: THREE.Vector3) {
+    const radius = 28;
+    for (const r of this.racers) {
+      if (!r.enrolled || !r.car.active) continue;
+      _v.copy(r.car.position).sub(at);
+      const d = _v.length();
+      if (d > radius) continue;
+
+      const falloff = Math.pow(1 - d / radius, 1.5);
+      if (d < 0.4) _v.set(0, 1, 0);
+      else _v.divideScalar(d);
+      _v.y = Math.max(_v.y, 0.45); // never a pure sideways shove
+      _v.normalize().multiplyScalar(CAR.mass * (5 + 30 * falloff));
+      r.car.body.applyImpulse({ x: _v.x, y: _v.y, z: _v.z }, true);
+
+      const spin = 260 * falloff;
+      r.car.body.applyTorqueImpulse(
+        {
+          x: (Math.random() - 0.5) * spin,
+          y: (Math.random() - 0.5) * spin,
+          z: (Math.random() - 0.5) * spin,
+        },
+        true,
+      );
+      r.car.sync();
+      if (r === this.player) this.chase.addShake(1.2 * falloff);
+    }
+  }
+
   private onPadPickup(position: THREE.Vector3, big: boolean) {
     this.rings.spawn(_v.copy(position).setY(0.12), _n.set(0, 1, 0), big ? 7 : 4, 0xffb545, 0.42);
     this.particles.spawn(_v.copy(position).setY(0.3), _n.set(0, 2, 0), {
@@ -829,8 +872,9 @@ export class Game {
 
     if (this.blast > 0) {
       this.blast = Math.max(0, this.blast - dt * 1.7);
-      // Cools from white to the scoring team's colour as it fades.
-      this.blastLight.intensity = this.blast * this.blast * 2600;
+      // Cools from white to the scoring team's colour as it fades. Kept short
+      // of a full white-out — the cars being thrown is the shot worth seeing.
+      this.blastLight.intensity = this.blast * this.blast * 1500;
       this.blastLight.color.setHex(0xffffff).lerp(
         this.goalTeam === 'blue' ? TEAM_COLOR.orange : TEAM_COLOR.blue,
         1 - this.blast,
@@ -840,7 +884,7 @@ export class Game {
     if (this.goalFlashTimer > 0) {
       this.goalFlashTimer -= dt;
       this.arena.flashGoal(this.goalTeam, this.elapsed, this.blast);
-      this.bloom.strength = 0.5 + Math.abs(Math.sin(this.elapsed * 14)) * 0.28 + this.blast * 0.9;
+      this.bloom.strength = 0.5 + Math.abs(Math.sin(this.elapsed * 14)) * 0.28 + this.blast * 0.55;
       if (this.goalFlashTimer <= 0) {
         this.arena.resetGoals();
         this.bloom.strength = 0.5;
@@ -955,6 +999,7 @@ export class Game {
     this.goalFlashTimer = 0;
     this.blast = 0;
     this.blastLight.intensity = 0;
+    this.timeScale = 1;
     this.fx.length = 0;
     this.chase.snap(this.playerCar, this.ball);
   }
