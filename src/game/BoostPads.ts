@@ -58,7 +58,9 @@ export class BoostPads {
         const dz = car.position.z - pad.position.z;
         const dy = car.position.y;
         if (dy > BOOST_PADS.height || dx * dx + dz * dz > pad.radius * pad.radius) continue;
-        if (car.boost >= CAR.boost.max && !pad.big) continue;
+        // Full tank: drive straight over it and leave it for someone who needs
+        // it, big pad or small.
+        if (car.boost >= CAR.boost.max) continue;
 
         car.boost = Math.min(CAR.boost.max, car.boost + pad.amount);
         pad.cooldown = pad.respawn;

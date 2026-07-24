@@ -43,6 +43,9 @@ const WHITE = new THREE.Color(0xffffff);
 const BOOST_COLOR = new THREE.Color(0xffa33c);
 const SPARK_COLOR = new THREE.Color(0xffd08a);
 const GOLD = new THREE.Color(0xffc766);
+/** Hot orange off the tyres at supersonic, with the odd brighter ember. */
+const SUPERSONIC_COLOR = new THREE.Color(0xff6a1e);
+const EMBER_COLOR = new THREE.Color(0xffc061);
 
 /** One car on the pitch, plus everything that draws or drives it. */
 interface Racer {
@@ -900,7 +903,8 @@ export class Game {
 
       // Boost / supersonic ribbon behind each car.
       const strength = car.isBoosting ? 0.5 : car.supersonic ? 0.3 : 0;
-      _v.copy(car.position).addScaledVector(car.forward, -0.62);
+      // Ribbon starts at the tail, which moved back with the longer body.
+      _v.copy(car.position).addScaledVector(car.forward, -(CAR.half.z + 0.03));
       // Billboard the ribbon against the view, otherwise a chase camera sees it
       // edge-on as a flat plank.
       this.trailSide.copy(this.chase.camera.position).sub(_v).cross(car.forward).normalize();
@@ -919,6 +923,32 @@ export class Game {
           gravity: -1.5,
           drag: 2.2,
         });
+      }
+
+      // Supersonic: hot streaks off the rear contact patches. Small and short
+      // lived on purpose — enough to be unmistakable, not a bonfire.
+      if (car.supersonic && car.grounded) {
+        for (let w = 0; w < 4; w++) {
+          // Every wheel lays a track; the rears burn hardest.
+          if (Math.random() > (w >= 2 ? 1 : 0.55)) continue;
+          // Spawn at the contact patch and leave it there — the car drives on,
+          // so the embers stay behind as two burning tyre tracks rather than a
+          // plume trailing off the back.
+          _v.set(CAR.wheel.offsets[w][0], -CAR.wheel.restLen + 0.02, CAR.wheel.offsets[w][2])
+            .applyQuaternion(car.quaternion)
+            .add(car.position);
+          _n.copy(car.forward).multiplyScalar(-1.2);
+          this.particles.spawn(_v, _n, {
+            count: 1,
+            spread: 1,
+            speed: 0.5,
+            size: w >= 2 ? 0.32 : 0.24,
+            life: w >= 2 ? 0.55 : 0.4,
+            color: Math.random() < 0.3 ? EMBER_COLOR : SUPERSONIC_COLOR,
+            gravity: 0.4,
+            drag: 3.2,
+          });
+        }
       }
 
       // Tyre smoke when the back end steps out.

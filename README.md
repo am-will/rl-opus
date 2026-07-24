@@ -51,6 +51,12 @@ the ball.
 
 **Demolitions.** Hit an opponent while you're supersonic (2200 uu/s, 79 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump. Teammates can't demo each other.
 
+**Supersonic** shows in the wheels rather than a badge on the car: the rims run
+hot and each tyre lays a line of embers along its track.
+
+**Boost pads** are left alone when you're already at 100 — you drive straight
+over them and they stay up for whoever needs them.
+
 **Goals** detonate the ball: the blast throws every car near the net, the world
 drops into slow motion for a beat, and the stands set off pyro.
 
@@ -77,6 +83,13 @@ Constants come from the Rocket League community's reverse-engineering work, conv
 - Ball restitution ≈ **0.63**, radius 91.25 uu, mass 30 (car is 180 — exactly 6×).
 - Held jump peaks at **2.55 m**, double jump at **4.82 m**.
 - Gravity 650 uu/s².
+
+One deliberate departure: the body is **35 % longer** than the stock Octane hitbox
+(1.59 m rather than 1.18 m) at the same width. `BODY_STRETCH` in `config.ts` drives
+the hitbox, the wheelbase, the visual shell and the demolition reach together —
+that last one matters, because two longer cars parked nose to nose sit further
+apart than the old demolition radius, and head-on demos would silently stop
+landing if it didn't scale with them.
 
 Three things do most of the work for the feel:
 

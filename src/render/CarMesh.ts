@@ -70,19 +70,33 @@ const CABIN: Station[] = [
   [0.14, 0.235, 0.062, 0.168],
 ];
 
+const HOT_RIM = new THREE.Color(0xff7a2a);
+
 export class CarMesh {
   group = new THREE.Group();
+  /**
+   * Everything drawn to the car's length lives in here, stretched in z. The
+   * stations above were authored against the stock hitbox, so this is the one
+   * place the longer body is applied — wheels and sprites stay outside it, or
+   * they'd come out as ellipses.
+   */
+  private shell = new THREE.Group();
   private wheelMeshes: THREE.Object3D[] = [];
   private flames: THREE.Mesh[] = [];
   private flameLight: THREE.PointLight;
   private flameGlow: THREE.Sprite;
   private boostLevel = 0;
-  private supersonicRing: THREE.Mesh;
   private teamColor: number;
+  private teamRim = new THREE.Color();
+  private rimMat!: THREE.MeshStandardMaterial;
+  private hotRim = 0;
 
   constructor(team: 'blue' | 'orange') {
     const t = TEAM[team];
     this.teamColor = t.primary;
+    this.teamRim.setHex(t.primary);
+    this.shell.scale.z = CAR.stretch;
+    this.group.add(this.shell);
 
     // A saturated mid-tone with modest specular: with a near-black base the only
     // thing you see is the reflection, and the car reads as white, not team-coloured.
@@ -97,7 +111,7 @@ export class CarMesh {
     });
     const body = new THREE.Mesh(loft(BODY), paint);
     body.castShadow = true;
-    this.group.add(body);
+    this.shell.add(body);
 
     const glass = new THREE.MeshPhysicalMaterial({
       color: 0x0a1420,
@@ -109,7 +123,7 @@ export class CarMesh {
     });
     const cabin = new THREE.Mesh(loft(CABIN), glass);
     cabin.castShadow = true;
-    this.group.add(cabin);
+    this.shell.add(cabin);
 
     const trimMat = new THREE.MeshStandardMaterial({
       color: t.glow,
@@ -123,11 +137,11 @@ export class CarMesh {
     const wing = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.035, 0.17), darkMat);
     wing.position.set(0, 0.255, -0.5);
     wing.castShadow = true;
-    this.group.add(wing);
+    this.shell.add(wing);
     for (const sx of [-0.27, 0.27]) {
       const strut = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.11, 0.07), darkMat);
       strut.position.set(sx, 0.2, -0.5);
-      this.group.add(strut);
+      this.shell.add(strut);
     }
 
     // Bumpers, front and rear. Purely cosmetic — they sit inside the collision
@@ -136,26 +150,26 @@ export class CarMesh {
     const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.13, 0.08), bumperMat);
     rearBumper.position.set(0, -0.1, -0.575);
     rearBumper.castShadow = true;
-    this.group.add(rearBumper);
+    this.shell.add(rearBumper);
 
     const rearDiffuser = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.07, 0.12), bumperMat);
     rearDiffuser.position.set(0, -0.155, -0.53);
-    this.group.add(rearDiffuser);
+    this.shell.add(rearDiffuser);
 
     const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.12, 0.08), bumperMat);
     frontBumper.position.set(0, -0.105, 0.575);
     frontBumper.castShadow = true;
-    this.group.add(frontBumper);
+    this.shell.add(frontBumper);
 
     const splitter = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.035, 0.13), bumperMat);
     splitter.position.set(0, -0.16, 0.545);
-    this.group.add(splitter);
+    this.shell.add(splitter);
 
     // Side accent stripes.
     for (const sx of [-1, 1]) {
       const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.035, 0.72), trimMat);
       stripe.position.set(sx * 0.425, -0.03, -0.02);
-      this.group.add(stripe);
+      this.shell.add(stripe);
     }
 
     // Lights.
@@ -163,12 +177,12 @@ export class CarMesh {
     for (const sx of [-0.19, 0.19]) {
       const hl = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.045, 0.03), head);
       hl.position.set(sx, 0.0, 0.585);
-      this.group.add(hl);
+      this.shell.add(hl);
     }
     for (const sx of [-0.2, 0.2]) {
       const tl = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.05, 0.03), trimMat);
       tl.position.set(sx, 0.06, -0.585);
-      this.group.add(tl);
+      this.shell.add(tl);
     }
 
     // Exhaust nozzles.
@@ -177,7 +191,7 @@ export class CarMesh {
       const n = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.07, 0.09, 12), nozzle);
       n.rotation.x = Math.PI / 2;
       n.position.set(sx, -0.03, -0.6);
-      this.group.add(n);
+      this.shell.add(n);
     }
 
     this.buildWheels();
@@ -199,22 +213,25 @@ export class CarMesh {
       depthWrite: false,
       toneMapped: false,
     });
+    // Flames sit outside the stretched shell so the cones keep their shape;
+    // they just start further back now that the tail does.
+    const tail = CAR.stretch;
     for (const sx of [-0.13, 0.13]) {
       const outer = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.85, 12, 1, true), flameMat);
       outer.rotation.x = -Math.PI / 2;
-      outer.position.set(sx, -0.03, -1.02);
+      outer.position.set(sx, -0.03, -0.62 * tail - 0.42);
       this.group.add(outer);
       this.flames.push(outer);
 
       const core = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.42, 10, 1, true), coreMat);
       core.rotation.x = -Math.PI / 2;
-      core.position.set(sx, -0.03, -0.82);
+      core.position.set(sx, -0.03, -0.62 * tail - 0.22);
       this.group.add(core);
       this.flames.push(core);
     }
 
     this.flameLight = new THREE.PointLight(0xff9a3c, 0, 14, 2);
-    this.flameLight.position.set(0, 0, -0.9);
+    this.flameLight.position.set(0, 0, -0.62 * tail - 0.3);
     this.group.add(this.flameLight);
 
     this.flameGlow = new THREE.Sprite(
@@ -226,25 +243,9 @@ export class CarMesh {
         toneMapped: false,
       }),
     );
-    this.flameGlow.position.set(0, -0.02, -0.68);
+    this.flameGlow.position.set(0, -0.02, -0.62 * tail - 0.08);
     this.flameGlow.scale.setScalar(0.9);
     this.group.add(this.flameGlow);
-
-    // Supersonic shock ring.
-    this.supersonicRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.62, 0.86, 24),
-      new THREE.MeshBasicMaterial({
-        color: 0xbfe6ff,
-        transparent: true,
-        opacity: 0,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
-    this.supersonicRing.position.set(0, 0, 0.5);
-    this.group.add(this.supersonicRing);
 
     this.setBoost(false, 0);
   }
@@ -258,6 +259,7 @@ export class CarMesh {
       emissive: this.teamColor,
       emissiveIntensity: 0.5,
     });
+    this.rimMat = rim;
 
     for (const [ox, , oz] of CAR.wheel.offsets) {
       const pivot = new THREE.Group();
@@ -325,13 +327,16 @@ export class CarMesh {
     this.flameGlow.visible = l > 0.02;
   }
 
+  /**
+   * Supersonic reads off the wheels rather than a badge on the nose: the rims
+   * run hot, and the game scatters sparks off the contact patches to match.
+   */
   setSupersonic(on: boolean, dt: number) {
-    const mat = this.supersonicRing.material as THREE.MeshBasicMaterial;
-    const target = on ? 0.34 : 0;
-    mat.opacity += (target - mat.opacity) * Math.min(1, dt * 8);
-    this.supersonicRing.visible = mat.opacity > 0.01;
-    const s = 1 + Math.sin(performance.now() * 0.012) * 0.06;
-    this.supersonicRing.scale.setScalar(s);
+    const target = on ? 1 : 0;
+    this.hotRim += (target - this.hotRim) * Math.min(1, dt * 7);
+    if (this.hotRim < 0.002 && !on) return;
+    this.rimMat.emissive.copy(this.teamRim).lerp(HOT_RIM, this.hotRim);
+    this.rimMat.emissiveIntensity = 0.5 + this.hotRim * 1.7;
   }
 
   setVisible(v: boolean) {

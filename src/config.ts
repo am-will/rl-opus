@@ -108,10 +108,19 @@ export const BALL_HIT = {
 // Car
 // ---------------------------------------------------------------------------
 
+/**
+ * Longer than the stock Octane, same width. Everything that depends on the
+ * car's length — hitbox, wheelbase, the visual shell, the demolition reach —
+ * is derived from this, so they can't drift apart.
+ */
+export const BODY_STRETCH = 1.35;
+
 export const CAR = {
   mass: 180, // (RL)
+  /** Body-length multiplier over the stock hitbox, for anything drawn to scale. */
+  stretch: BODY_STRETCH,
   // (RL) Octane hitbox 118.01 x 84.20 x 36.16 uu -> half extents, in (x=right, y=up, z=forward)
-  half: { x: uu(84.2) / 2, y: uu(36.16) / 2, z: uu(118.01) / 2 },
+  half: { x: uu(84.2) / 2, y: uu(36.16) / 2, z: (uu(118.01) * BODY_STRETCH) / 2 },
   colliderRound: 0.03, // small round on the box so we slide along walls instead of catching edges
 
   maxDriveSpeed: uu(1410), // (RL) throttle-only top speed
@@ -155,10 +164,10 @@ export const CAR = {
   wheel: {
     /** Mount points in car-local space, relative to the hitbox centre. */
     offsets: [
-      [0.4, 0.02, 0.42],
-      [-0.4, 0.02, 0.42],
-      [0.4, 0.02, -0.42],
-      [-0.4, 0.02, -0.42],
+      [0.4, 0.02, 0.42 * BODY_STRETCH],
+      [-0.4, 0.02, 0.42 * BODY_STRETCH],
+      [0.4, 0.02, -0.42 * BODY_STRETCH],
+      [-0.4, 0.02, -0.42 * BODY_STRETCH],
     ] as [number, number, number][],
     radius: 0.17,
     /** Distance from mount to wheel bottom when fully extended / at rest. */
@@ -236,8 +245,12 @@ export const CAR = {
 export const DEMO = {
   /** Attacker must be at or above this to demolish (RL supersonic threshold). */
   minSpeed: uu(2200),
-  /** Centre-to-centre distance counted as a hit. */
-  radius: 1.45,
+  /**
+   * Centre-to-centre distance counted as a hit. Has to clear two cars parked
+   * nose to nose (2 x half.z) or the colliders keep them apart and a head-on
+   * demolition can never land.
+   */
+  radius: CAR.half.z * 2 + 0.36,
   /** Seconds spent wrecked before respawning at your own goal. */
   respawnDelay: 1.0,
 };
