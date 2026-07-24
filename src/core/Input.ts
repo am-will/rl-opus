@@ -127,6 +127,13 @@ export class Input {
     return this.keysDown.has(code);
   }
 
+  /** Edge on a raw key code, for the handful of keys that aren't bindable. */
+  consumeKey(code: string) {
+    if (!this.keysPressed.has(code)) return false;
+    this.keysPressed.delete(code);
+    return true;
+  }
+
   // -------------------------------------------------------------------------
   // Gamepad
   // -------------------------------------------------------------------------

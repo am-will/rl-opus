@@ -9,6 +9,8 @@ export class GameState {
 
   scoreBlue = 0;
   scoreOrange = 0;
+  /** Match length in seconds; changed from the menu, applied on the next reset. */
+  duration = MATCH.duration;
   clock = MATCH.duration;
   countdown = MATCH.countdown;
   goalTimer = 0;
@@ -23,7 +25,7 @@ export class GameState {
     this.phase = 'countdown';
     this.scoreBlue = 0;
     this.scoreOrange = 0;
-    this.clock = MATCH.duration;
+    this.clock = this.duration;
     this.countdown = MATCH.countdown;
     this.goalTimer = 0;
     this.overtime = false;
@@ -32,12 +34,17 @@ export class GameState {
   }
 
   togglePause() {
+    this.setPaused(this.phase !== 'paused');
+  }
+
+  setPaused(paused: boolean) {
     if (this.phase === 'ended') return;
-    if (this.phase === 'paused') {
-      this.phase = this.resumePhase;
-    } else {
+    if (paused === (this.phase === 'paused')) return;
+    if (paused) {
       this.resumePhase = this.phase;
       this.phase = 'paused';
+    } else {
+      this.phase = this.resumePhase;
     }
     this.revision++;
   }

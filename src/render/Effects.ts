@@ -385,7 +385,7 @@ export class BallMesh {
     this.indicator.position.set(position.x, 0.04, position.z);
     this.indicator.scale.setScalar(BALL.radius * (1 + t * 3.4));
     (this.indicator.material as THREE.MeshBasicMaterial).opacity = 0.14 + t * 0.5;
-    this.indicator.visible = h > 0.15;
+    this.indicator.visible = this.group.visible && h > 0.15;
 
     // Ribbon faces the camera.
     const side = new THREE.Vector3().subVectors(camera.position, position).normalize();
@@ -398,6 +398,14 @@ export class BallMesh {
   reset(position: THREE.Vector3) {
     this.group.position.copy(position);
     this.trail.teleport(position);
+    this.setVisible(true);
+  }
+
+  /** Hidden during a goal celebration — the ball "becomes" the explosion. */
+  setVisible(visible: boolean) {
+    this.group.visible = visible;
+    this.trail.mesh.visible = visible;
+    if (!visible) this.indicator.visible = false;
   }
 }
 

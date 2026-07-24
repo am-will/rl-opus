@@ -55,6 +55,10 @@ export class ChaseCamera {
     return this.mode;
   }
 
+  setMode(mode: CameraMode) {
+    this.mode = mode;
+  }
+
   addShake(amount: number) {
     this.shakeAmount = Math.min(1.6, this.shakeAmount + amount);
   }

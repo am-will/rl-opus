@@ -9,6 +9,8 @@ export class HUD {
   private el: Record<string, HTMLElement> = {};
   private lastRevision = -1;
   private lastCountdown = -99;
+  /** The menu is its own pause screen, so the HUD's one stays out of the way. */
+  private menuOpen = false;
   private flash: HTMLElement;
 
   constructor(parent: HTMLElement) {
@@ -49,6 +51,7 @@ export class HUD {
       <div class="center" data-el="center"></div>
 
       <div class="flags">
+        <div class="flag" data-el="modeFlag">Mode: 1v1</div>
         <div class="flag" data-el="camFlag">Cam: Ball</div>
         <div class="flag" data-el="boostFlag">Infinite Boost: Off</div>
         <div class="flag" data-el="soundFlag">Sound: 40%</div>
@@ -59,23 +62,7 @@ export class HUD {
 
       <div class="controls" data-el="controls">
         <div class="title">Controls</div>
-        <dl>
-          <dt>WASD</dt><dd>Drive / steer</dd>
-          <dt>Space</dt><dd>Jump &middot; tap twice to flip</dd>
-          <dt></dt><dd class="dim">Upside down? Jump, then air roll</dd>
-          <dt>Shift</dt><dd>Boost</dd>
-          <dt>Ctrl / PgDn</dt><dd>Powerslide &middot; air roll</dd>
-          <dt>Q / E</dt><dd>Air roll left / right</dd>
-          <dt>W / S</dt><dd>Pitch (in air)</dd>
-          <dt>C</dt><dd>Camera &middot; ball cam</dd>
-          <dt>R</dt><dd>Reset car</dd>
-          <dt>T</dt><dd>Restart match</dd>
-          <dt>B</dt><dd>Infinite boost</dd>
-          <dt>P</dt><dd>Practice mode (no bot)</dd>
-          <dt>M / Esc / H</dt><dd>Mute &middot; pause &middot; hide this</dd>
-          <dt>+ / −</dt><dd>Game &amp; SFX volume</dd>
-          <dt></dt><dd class="dim">Supersonic contact demolishes the slower car</dd>
-        </dl>
+        <dl data-el="controlList"></dl>
       </div>
     `;
     parent.appendChild(this.root);
@@ -99,6 +86,24 @@ export class HUD {
   setPractice(on: boolean) {
     this.el.practiceFlag.textContent = `Practice: ${on ? 'On' : 'Off'}`;
     this.el.practiceFlag.classList.toggle('on', on);
+  }
+
+  setMode(mode: string) {
+    this.el.modeFlag.textContent = `Mode: ${mode}`;
+  }
+
+  /** Rebuilt from the live bindings, so a rebind shows up here immediately. */
+  setControls(rows: { keys: string; action: string; dim?: boolean }[]) {
+    const dl = this.el.controlList;
+    dl.innerHTML = '';
+    for (const row of rows) {
+      const dt = document.createElement('dt');
+      dt.textContent = row.keys;
+      const dd = document.createElement('dd');
+      dd.textContent = row.action;
+      if (row.dim) dd.className = 'dim';
+      dl.append(dt, dd);
+    }
   }
 
   /** Brief centre-screen notification, e.g. a demolition. */
@@ -137,9 +142,10 @@ export class HUD {
   }
 
   /** Score / clock / banners — only rebuilt when state actually changes. */
-  update(state: GameState) {
-    if (state.revision === this.lastRevision) return;
+  update(state: GameState, menuOpen = false) {
+    if (state.revision === this.lastRevision && menuOpen === this.menuOpen) return;
     this.lastRevision = state.revision;
+    this.menuOpen = menuOpen;
 
     const b = this.el.blueScore.firstElementChild!;
     const o = this.el.orangeScore.firstElementChild!;
@@ -188,10 +194,12 @@ export class HUD {
         break;
       }
       case 'paused':
-        c.innerHTML = `<div class="overlay">
+        c.innerHTML = this.menuOpen
+          ? ''
+          : `<div class="overlay">
             <div>
               <h1>Paused</h1>
-              <p>Press <b>Esc</b> to resume<br />Press <b>R</b> to reset your car</p>
+              <p>Press <b>Esc</b> to resume</p>
             </div>
           </div>`;
         break;

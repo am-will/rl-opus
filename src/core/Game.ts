@@ -4,10 +4,23 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-import { ARENA, BALL, CAR, DEMO, FIXED_DT, KICKOFF, MATCH, MAX_SUBSTEPS, TEAM } from '../config';
+import {
+  ARENA,
+  BALL,
+  CAR,
+  DEMO,
+  FIXED_DT,
+  KICKOFF_SETS,
+  KICKOFF_SPOTS,
+  MATCH,
+  MAX_SUBSTEPS,
+  TEAM,
+  TEAM_SIZE,
+  kickoffSpawn,
+} from '../config';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { Ball } from '../physics/Ball';
-import { Car, emptyInput } from '../physics/Car';
+import { Car, emptyInput, type CarInput } from '../physics/Car';
 import { BoostPads } from '../game/BoostPads';
 import { Bot } from '../game/Bot';
 import { ArenaMesh, buildEnvironmentScene, buildLighting } from '../render/ArenaMesh';
@@ -17,13 +30,32 @@ import { ChaseCamera } from '../render/ChaseCamera';
 import { GameState } from './GameState';
 import { Input } from './Input';
 import { HUD } from '../ui/HUD';
+import { Menu } from '../ui/Menu';
 import { Audio } from '../audio/Audio';
+import { keyLabel, type ActionId } from './Bindings';
+import { loadSettings, saveSettings, type Settings } from './Settings';
 
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
 const WHITE = new THREE.Color(0xffffff);
 const BOOST_COLOR = new THREE.Color(0xffa33c);
 const SPARK_COLOR = new THREE.Color(0xffd08a);
+const GOLD = new THREE.Color(0xffc766);
+
+/** One car on the pitch, plus everything that draws or drives it. */
+interface Racer {
+  car: Car;
+  mesh: CarMesh;
+  trail: Trail;
+  /** null for the human. */
+  bot: Bot | null;
+  botInput: CarInput;
+  team: 'blue' | 'orange';
+  /** Position within the team; slot 0 is always on the pitch. */
+  slot: number;
+  /** In the roster for the current mode. */
+  enrolled: boolean;
+}
 
 export class Game {
   renderer!: THREE.WebGLRenderer;
@@ -33,40 +65,61 @@ export class Game {
 
   physics!: PhysicsWorld;
   ball!: Ball;
-  playerCar!: Car;
-  botCar!: Car;
-  bot!: Bot;
   pads = new BoostPads();
 
+  /** Every car that could take the pitch: two per team, index 0 is the player. */
+  racers: Racer[] = [];
+
   arena!: ArenaMesh;
-  carMeshes: CarMesh[] = [];
   ballMesh!: BallMesh;
   padMesh!: BoostPadMesh;
-  particles = new Particles(1600);
-  rings = new ImpactRings(16);
+  particles = new Particles(3000);
+  rings = new ImpactRings(28);
 
   chase!: ChaseCamera;
   hud!: HUD;
+  menu!: Menu;
   input!: Input;
   state = new GameState();
-
   audio = new Audio();
-  /** No bot on the pitch — free play. */
-  practiceMode = false;
+
+  settings: Settings = loadSettings();
+
   private prevBallVel = new THREE.Vector3();
   private lastCountdown = 99;
-  private botInput = emptyInput();
   private accumulator = 0;
   private lastTime = 0;
   private elapsed = 0;
   private goalFlashTimer = 0;
   private goalTeam: 'blue' | 'orange' = 'blue';
   private trailSide = new THREE.Vector3();
+  private roleTimer = 0;
+
+  /** Goal explosion: staged effects and the flash that drives lighting + bloom. */
+  private fx: { t: number; run: () => void }[] = [];
+  private blastLight!: THREE.PointLight;
+  private blast = 0;
+
+  private appliedMode = '';
+  private appliedMinutes = 0;
 
   static async create(canvas: HTMLCanvasElement, hudParent: HTMLElement): Promise<Game> {
     const g = new Game();
     await g.init(canvas, hudParent);
     return g;
+  }
+
+  get player(): Racer {
+    return this.racers[0];
+  }
+
+  get playerCar(): Car {
+    return this.racers[0].car;
+  }
+
+  /** No bots on the pitch — free play. */
+  get practiceMode() {
+    return this.settings.practice;
   }
 
   private async init(canvas: HTMLCanvasElement, hudParent: HTMLElement) {
@@ -92,12 +145,6 @@ export class Game {
     // --- Physics -------------------------------------------------------------
     this.physics = await PhysicsWorld.create();
     this.ball = new Ball(this.physics);
-    this.playerCar = new Car(this.physics, 'blue');
-    this.botCar = new Car(this.physics, 'orange');
-    // Blue defends -z and attacks +z; the orange bot is the mirror image.
-    // Skill 0.5 keeps it competitive but clearly beatable — it over-runs the
-    // ball and mistimes challenges often enough to punish.
-    this.bot = new Bot(this.botCar, ARENA.halfLength, -ARENA.halfLength, 0.5);
 
     // --- Scene ---------------------------------------------------------------
     this.arena = new ArenaMesh();
@@ -107,16 +154,37 @@ export class Game {
     this.ballMesh = new BallMesh();
     this.scene.add(this.ballMesh.group, this.ballMesh.trail.mesh, this.ballMesh.indicator);
 
+    // Two cars per side exist from the start; 1v1 simply benches slot 1. Rapier
+    // bodies are cheap to park and this keeps mode switching instant.
     for (const team of ['blue', 'orange'] as const) {
-      const m = new CarMesh(team);
-      this.carMeshes.push(m);
-      this.scene.add(m.group);
+      for (let slot = 0; slot < 2; slot++) {
+        const car = new Car(this.physics, team);
+        const mesh = new CarMesh(team);
+        const trail = new Trail(24, 0.28, TEAM[team].glow);
+        const human = team === 'blue' && slot === 0;
+        // Blue defends -z and attacks +z; orange is the mirror image.
+        const own = team === 'blue' ? -ARENA.halfLength : ARENA.halfLength;
+        const racer: Racer = {
+          car,
+          mesh,
+          trail,
+          bot: human ? null : new Bot(car, own, -own, this.settings.botSkill),
+          botInput: emptyInput(),
+          team,
+          slot,
+          enrolled: human,
+        };
+        this.racers.push(racer);
+        this.scene.add(mesh.group, trail.mesh);
+      }
     }
-    this.carTrails = [new Trail(24, 0.28, TEAM.blue.glow), new Trail(24, 0.28, TEAM.orange.glow)];
-    for (const t of this.carTrails) this.scene.add(t.mesh);
 
     this.padMesh = new BoostPadMesh(this.pads.pads);
     this.scene.add(this.padMesh.group, this.particles.points, this.rings.group);
+
+    // Fires only during a goal celebration; parked dark the rest of the time.
+    this.blastLight = new THREE.PointLight(0xffffff, 0, 90, 2);
+    this.scene.add(this.blastLight);
 
     // --- Post ----------------------------------------------------------------
     this.chase = new ChaseCamera(window.innerWidth / window.innerHeight);
@@ -136,24 +204,124 @@ export class Game {
     // --- Shell ---------------------------------------------------------------
     this.hud = new HUD(hudParent);
     this.input = new Input();
-    this.hud.setCameraMode(this.chase.mode);
-    this.hud.setInfiniteBoost(false);
-    this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    this.menu = new Menu(hudParent, {
+      settings: this.settings,
+      input: this.input,
+      apply: () => this.applySettings(),
+      restartMatch: () => this.restartMatch(),
+      close: () => this.setMenuOpen(false),
+      tick: (high?: boolean) => this.audio.uiTick(high),
+    });
 
     // Browsers only allow audio to start inside a user gesture.
     const wake = () => {
       this.audio.start();
       this.audio.resume();
+      this.audio.setVolume(this.settings.volume);
+      this.audio.setMuted(this.settings.muted);
     };
     window.addEventListener('keydown', wake, { once: true });
     window.addEventListener('pointerdown', wake, { once: true });
 
     window.addEventListener('resize', () => this.resize());
+
+    this.applySettings({ silent: true });
+    // Picks up a saved match length before the first clock starts ticking.
+    this.state.reset();
     this.kickoff();
     this.chase.snap(this.playerCar, this.ball);
   }
 
-  private carTrails: Trail[] = [];
+  // -------------------------------------------------------------------------
+  // Settings
+  // -------------------------------------------------------------------------
+
+  /**
+   * Single path for a setting to take effect, whether it came from the menu or
+   * a hotkey. Mode and match-length changes restart the match — you can't
+   * meaningfully add a car mid-play.
+   */
+  applySettings(opts: { silent?: boolean } = {}) {
+    const s = this.settings;
+
+    this.input.keys = s.keys;
+    this.input.pad = s.pad;
+    this.audio.setVolume(s.volume);
+    this.audio.setMuted(s.muted);
+    this.chase.setMode(s.camera);
+    this.playerCar.infiniteBoost = s.infiniteBoost;
+    this.state.duration = s.matchMinutes * 60;
+    for (const r of this.racers) if (r.bot) r.bot.skill = s.botSkill;
+
+    const structural = s.mode !== this.appliedMode || s.matchMinutes !== this.appliedMinutes;
+    const first = this.appliedMode === '';
+    this.appliedMode = s.mode;
+    this.appliedMinutes = s.matchMinutes;
+
+    const size = TEAM_SIZE[s.mode];
+    for (const r of this.racers) {
+      r.enrolled = r === this.player || (r.slot < size && !s.practice);
+    }
+
+    if (structural && !first) this.restartMatch();
+    else this.syncRoster();
+
+    this.refreshHud();
+    if (!opts.silent) saveSettings(s);
+  }
+
+  /** Bench everyone who isn't in the roster; put back anyone who just joined. */
+  private syncRoster() {
+    for (const r of this.racers) {
+      if (r.enrolled) {
+        if (!r.car.active && !r.car.wrecked) {
+          const spawn = kickoffSpawn(r.team, KICKOFF_SPOTS[KICKOFF_SPOTS.length - 1]);
+          r.car.respawn(spawn.x + (r.slot === 0 ? 0 : 7), spawn.z, spawn.yaw, CAR.boost.start);
+          r.trail.teleport(r.car.position);
+          r.bot?.reset();
+        }
+        r.mesh.setVisible(r.car.active);
+      } else {
+        r.car.setActive(false);
+        r.car.wrecked = false;
+        r.car.demoTimer = 0;
+        r.mesh.setVisible(false);
+        r.trail.teleport(r.car.position);
+      }
+    }
+  }
+
+  private refreshHud() {
+    const s = this.settings;
+    this.hud.setCameraMode(s.camera);
+    this.hud.setInfiniteBoost(s.infiniteBoost);
+    this.hud.setSound(s.muted, this.audio.volumePercent);
+    this.hud.setPractice(s.practice);
+    this.hud.setMode(s.mode);
+    this.hud.setControls(this.controlRows());
+  }
+
+  /** Controls panel, rendered from the live bindings so rebinds show up. */
+  private controlRows() {
+    const key = (id: ActionId) => keyLabel(this.settings.keys[id][0] ?? null);
+    return [
+      {
+        keys: `${key('throttle')} ${key('steerLeft')} ${key('reverse')} ${key('steerRight')}`,
+        action: 'Drive / steer',
+      },
+      { keys: key('jump'), action: 'Jump · tap twice to flip' },
+      { keys: key('boost'), action: 'Boost' },
+      { keys: key('drift'), action: 'Powerslide · air roll' },
+      { keys: `${key('airRollLeft')} / ${key('airRollRight')}`, action: 'Air roll left / right' },
+      { keys: key('camera'), action: 'Camera · ball cam' },
+      { keys: key('resetCar'), action: 'Reset car' },
+      { keys: key('restartMatch'), action: 'Restart match' },
+      { keys: key('menu'), action: 'Menu · settings · pause' },
+      { keys: key('practice'), action: 'Practice mode' },
+      { keys: '', action: 'Upside down? Jump, then air roll', dim: true },
+      { keys: '', action: 'Supersonic contact demolishes the slower car', dim: true },
+    ];
+  }
 
   // -------------------------------------------------------------------------
 
@@ -170,7 +338,9 @@ export class Game {
 
   private frame(dt: number) {
     this.elapsed += dt;
+    this.input.poll();
     this.handleGlobalKeys();
+    if (this.menu.open) this.menu.update();
 
     const running = this.state.phase !== 'paused' && this.state.phase !== 'ended';
     if (running) {
@@ -213,13 +383,8 @@ export class Game {
     );
 
     this.updateVisuals(dt);
-    this.hud.update(this.state);
-    this.hud.updateFast(
-      this.playerCar.boost,
-      this.playerCar.infiniteBoost,
-      this.playerCar.speed,
-      this.playerCar.supersonic,
-    );
+    this.hud.update(this.state, this.menu.open);
+    this.hud.updateFast(pc.boost, pc.infiniteBoost, pc.speed, pc.supersonic);
     this.chase.update(this.playerCar, this.ball, dt);
     this.composer.render();
     this.input.endFrame();
@@ -228,101 +393,132 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private fixedStep(dt: number, live: boolean) {
+    const roster = this.racers.filter((r) => r.enrolled);
+
     if (live) {
       this.input.readCarInput(this.playerCar.input);
-      if (this.botCar.active) {
-        this.bot.update(dt, this.ball, this.pads, this.botInput);
-        Object.assign(this.botCar.input, this.botInput);
+      this.roleTimer -= dt;
+      if (this.roleTimer <= 0) {
+        this.roleTimer = 0.25; // re-deciding every step makes the bots dither
+        this.assignRoles();
+      }
+      for (const r of roster) {
+        if (!r.bot || !r.car.active) continue;
+        r.bot.update(dt, this.ball, this.pads, r.botInput);
+        Object.assign(r.car.input, r.botInput);
       }
     } else {
-      Object.assign(this.playerCar.input, emptyInput());
-      Object.assign(this.botCar.input, emptyInput());
+      for (const r of this.racers) Object.assign(r.car.input, emptyInput());
     }
 
-    this.playerCar.update(dt);
-    this.botCar.update(dt);
+    for (const r of this.racers) r.car.update(dt);
 
     // Extra ball impulse uses pre-step velocities, matching how RL computes it.
-    this.playerCar.tryHitBall(this.ball);
-    this.botCar.tryHitBall(this.ball);
+    for (const r of roster) r.car.tryHitBall(this.ball);
 
-    const hitThisStep = !!(this.playerCar.ballHitEvent || this.botCar.ballHitEvent);
+    let hitStrength = 0;
+    for (const r of roster) hitStrength = Math.max(hitStrength, r.car.ballHitEvent?.strength ?? 0);
+    const hitThisStep = roster.some((r) => r.car.ballHitEvent);
     this.prevBallVel.copy(this.ball.velocity);
 
     this.physics.step();
 
     this.ball.update(dt);
     this.ball.sync();
-    this.playerCar.sync();
-    this.botCar.sync();
+    for (const r of this.racers) r.car.sync();
 
     // Anything that changed the ball's velocity sharply without a car touching
     // it was the arena — that's a bounce.
     const dv = this.prevBallVel.distanceTo(this.ball.velocity);
     if (hitThisStep) {
-      const s = Math.max(
-        this.playerCar.ballHitEvent?.strength ?? 0,
-        this.botCar.ballHitEvent?.strength ?? 0,
-      );
-      this.audio.ballHit(s);
+      this.audio.ballHit(hitStrength);
     } else if (dv > 2.5) {
       this.audio.bounce(THREE.MathUtils.clamp(dv / 22, 0.05, 1));
     }
 
-    for (const car of [this.playerCar, this.botCar]) {
+    for (const r of roster) {
+      const car = r.car;
       if (car.justJumped) this.audio.jump();
       if (car.justFlipped) this.audio.flip();
       if (car.landedHard > 0.35 && car.grounded) this.audio.land(car.landedHard);
     }
 
-    this.pads.update(dt, [this.playerCar, this.botCar].filter((c) => c.active));
+    this.pads.update(dt, roster.map((r) => r.car).filter((c) => c.active));
     for (const e of this.pads.events) {
       this.onPadPickup(e.pad.position, e.pad.big);
       this.audio.pad(e.pad.big);
     }
 
-    this.updateDemolitions(dt);
+    this.updateDemolitions();
     if (live) this.checkGoal();
+  }
+
+  /** Closest car on each side takes the ball; the rest hold a support position. */
+  private assignRoles() {
+    for (const team of ['blue', 'orange'] as const) {
+      const mates = this.racers.filter((r) => r.enrolled && r.car.active && r.team === team);
+      if (mates.length < 2) {
+        for (const r of mates) if (r.bot) r.bot.role = 'attack';
+        continue;
+      }
+      let closest = mates[0];
+      let best = Infinity;
+      for (const r of mates) {
+        const d = r.car.position.distanceToSquared(this.ball.position);
+        if (d < best) {
+          best = d;
+          closest = r;
+        }
+      }
+      for (const r of mates) if (r.bot) r.bot.role = r === closest ? 'attack' : 'support';
+    }
   }
 
   /**
    * Supersonic contact wrecks the slower car. Checked centre-to-centre rather
    * than by true hitbox overlap — close enough at 2200+ uu/s, and it can't
-   * miss a hit between physics steps.
+   * miss a hit between physics steps. Teammates can't demo each other.
    */
-  private updateDemolitions(dt: number) {
-    const a = this.playerCar;
-    const b = this.botCar;
-
-    for (const car of [a, b]) {
+  private updateDemolitions() {
+    for (const r of this.racers) {
       // `wrecked` distinguishes a demolished car from one benched for practice.
-      if (!car.wrecked || car.demoTimer > 0) continue;
+      if (!r.car.wrecked || r.car.demoTimer > 0) continue;
       // Wreck timer expired — put them back in front of their own net.
-      const own = car.team === 'blue' ? -1 : 1;
-      car.respawn(0, own * (ARENA.halfLength - 4), own > 0 ? Math.PI : 0, CAR.respawnBoost);
-      this.carTrails[car === a ? 0 : 1].teleport(car.position);
-      if (car === a) this.chase.snap(a, this.ball);
+      const own = r.team === 'blue' ? -1 : 1;
+      r.car.respawn(
+        r.slot === 0 ? -3.5 : 3.5,
+        own * (ARENA.halfLength - 4),
+        own > 0 ? Math.PI : 0,
+        CAR.respawnBoost,
+      );
+      r.trail.teleport(r.car.position);
+      if (r === this.player) this.chase.snap(r.car, this.ball);
     }
 
-    if (!a.active || !b.active) return;
-    if (a.position.distanceTo(b.position) > DEMO.radius) return;
-
-    const fast = a.speed >= b.speed ? a : b;
-    const slow = fast === a ? b : a;
-    if (fast.speed < DEMO.minSpeed) return;
-
-    this.demolish(slow, dt);
+    const live = this.racers.filter((r) => r.enrolled && r.car.active);
+    for (let i = 0; i < live.length; i++) {
+      for (let j = i + 1; j < live.length; j++) {
+        const a = live[i];
+        const b = live[j];
+        if (a.team === b.team) continue;
+        if (a.car.position.distanceTo(b.car.position) > DEMO.radius) continue;
+        const fast = a.car.speed >= b.car.speed ? a : b;
+        const slow = fast === a ? b : a;
+        if (fast.car.speed < DEMO.minSpeed) continue;
+        this.demolish(slow);
+      }
+    }
   }
 
-  private demolish(victim: Car, _dt: number) {
-    const pos = victim.position.clone();
+  private demolish(victim: Racer) {
+    const pos = victim.car.position.clone();
     const colour = victim.team === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
 
-    victim.setActive(false);
-    victim.wrecked = true;
-    victim.demoTimer = DEMO.respawnDelay;
-    this.carMeshes[victim === this.playerCar ? 0 : 1].setVisible(false);
-    this.carTrails[victim === this.playerCar ? 0 : 1].teleport(pos);
+    victim.car.setActive(false);
+    victim.car.wrecked = true;
+    victim.car.demoTimer = DEMO.respawnDelay;
+    victim.mesh.setVisible(false);
+    victim.trail.teleport(pos);
 
     // Flash, shockwave, then coloured debris and hot white sparks.
     this.rings.spawn(pos, _n.set(0, 1, 0), 4.5, 0xffffff, 0.4);
@@ -349,26 +545,15 @@ export class Game {
     });
 
     this.audio.explode();
-    this.chase.addShake(victim === this.playerCar ? 1.5 : 0.7);
-    this.hud.toast(victim === this.playerCar ? 'Demolished!' : 'Demolition!', victim.team);
+    this.chase.addShake(victim === this.player ? 1.5 : 0.7);
+    this.hud.toast(victim === this.player ? 'Demolished!' : 'Demolition!', victim.team);
   }
 
-  /** P toggles the bot in and out. */
+  /** Toggles the bots in and out without touching the score. */
   togglePractice() {
-    this.practiceMode = !this.practiceMode;
-    if (this.practiceMode) {
-      this.botCar.setActive(false);
-      this.botCar.demoTimer = 0;
-      this.carMeshes[1].setVisible(false);
-      this.carTrails[1].teleport(this.botCar.position);
-    } else {
-      this.botCar.respawn(KICKOFF.orange.x, KICKOFF.orange.z, KICKOFF.orange.yaw, CAR.boost.start);
-      this.carMeshes[1].setVisible(true);
-      this.carTrails[1].teleport(this.botCar.position);
-      this.bot.reset();
-    }
-    this.hud.setPractice(this.practiceMode);
-    return this.practiceMode;
+    this.settings.practice = !this.settings.practice;
+    this.applySettings();
+    return this.settings.practice;
   }
 
   private checkGoal() {
@@ -383,36 +568,159 @@ export class Game {
     else if (p.z < -line) this.onGoal('orange');
   }
 
+  // -------------------------------------------------------------------------
+  // Goal explosion
+  // -------------------------------------------------------------------------
+
   private onGoal(scorer: 'blue' | 'orange') {
     this.state.scoreGoal(scorer);
-    this.audio.goal();
     // Blue attacks +z, so the ball is sitting in orange's net.
     this.goalTeam = scorer === 'blue' ? 'orange' : 'blue';
     this.goalFlashTimer = MATCH.goalCelebration;
-    this.chase.addShake(1.4);
+    this.explodeGoal(scorer);
+  }
 
-    const z = (scorer === 'blue' ? 1 : -1) * (ARENA.halfLength + 1.5);
-    const color = scorer === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
+  private queueFx(delay: number, run: () => void) {
+    this.fx.push({ t: delay, run });
+  }
+
+  private runFx(dt: number) {
+    for (let i = this.fx.length - 1; i >= 0; i--) {
+      this.fx[i].t -= dt;
+      if (this.fx[i].t > 0) continue;
+      const f = this.fx[i];
+      this.fx.splice(i, 1);
+      f.run();
+    }
+  }
+
+  /**
+   * The ball detonates where it crossed the line: white core, shockwave through
+   * the goal mouth, debris raining into the net, then pyro in the stands.
+   */
+  private explodeGoal(scorer: 'blue' | 'orange') {
+    const dir = scorer === 'blue' ? 1 : -1;
+    const colour = scorer === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
+    const glow = scorer === 'blue' ? TEAM.blue.glow : TEAM.orange.glow;
+
+    const at = this.ball.position.clone();
+    at.y = Math.max(1.4, at.y);
+    this.ballMesh.setVisible(false);
+
+    this.audio.goal();
+    this.chase.addShake(2.0);
+    this.blast = 1;
+    this.blastLight.position.copy(at);
+    this.blastLight.color.setHex(0xffffff);
+
+    // Core: a hard white flash facing the camera, plus a flat ground ring.
+    this.rings.spawn(at, _n.copy(this.chase.camera.position).sub(at).normalize(), 7, 0xffffff, 0.28);
+    this.particles.spawn(at, _v.set(0, 2, 0), {
+      count: 120,
+      spread: 0.2,
+      speed: 44,
+      size: 0.42,
+      life: 0.5,
+      color: WHITE,
+      gravity: 1,
+      drag: 2.8,
+    });
+    this.particles.spawn(at, _v.set(0, 6, 0), {
+      count: 150,
+      spread: 0.4,
+      speed: 26,
+      size: 0.6,
+      life: 1.7,
+      color: colour,
+      gravity: 8,
+      drag: 0.8,
+    });
+    this.particles.spawn(at, _v.set(0, 4, 0), {
+      count: 70,
+      spread: 0.3,
+      speed: 34,
+      size: 0.3,
+      life: 1.1,
+      color: GOLD,
+      gravity: 5,
+      drag: 1.5,
+    });
+
+    // Shockwave punching out through the goal mouth.
+    this.queueFx(0.06, () => {
+      this.rings.spawn(
+        _v.set(0, ARENA.goal.height * 0.5, dir * ARENA.halfLength),
+        _n.set(0, 0, -dir),
+        34,
+        0xffffff,
+        0.5,
+      );
+    });
+    this.queueFx(0.16, () => {
+      this.rings.spawn(_v.copy(at).setY(0.12), _n.set(0, 1, 0), 30, glow, 0.65);
+      this.chase.addShake(0.7);
+    });
+    this.queueFx(0.3, () => {
+      this.rings.spawn(
+        _v.set(0, ARENA.goal.height * 0.5, dir * (ARENA.halfLength + 1)),
+        _n.set(0, 0, -dir),
+        52,
+        glow,
+        0.8,
+      );
+    });
+
+    // Debris kicked back out of the net a beat later.
+    this.queueFx(0.22, () => {
+      for (let i = 0; i < 3; i++) {
+        _v.set(
+          (Math.random() - 0.5) * ARENA.goal.halfWidth * 1.7,
+          Math.random() * ARENA.goal.height,
+          dir * (ARENA.halfLength + 1.5),
+        );
+        this.particles.spawn(_v, _n.set(0, 6, -dir * 4), {
+          count: 40,
+          spread: 0.6,
+          speed: 18,
+          size: 0.5,
+          life: 1.5,
+          color: colour,
+          gravity: 6,
+          drag: 0.7,
+        });
+      }
+    });
+
+    // Pyro over the stands, staggered so it reads as a sequence.
     for (let i = 0; i < 5; i++) {
-      _v.set((Math.random() - 0.5) * ARENA.goal.halfWidth * 1.7, Math.random() * ARENA.goal.height, z);
-      this.particles.spawn(_v, _n.set(0, 6, 0), {
-        count: 44,
-        spread: 0.5,
-        speed: 16,
-        size: 0.55,
-        life: 1.5,
-        color,
-        gravity: 5,
-        drag: 0.7,
+      this.queueFx(0.45 + i * 0.28 + Math.random() * 0.12, () => {
+        const a = Math.random() * Math.PI * 2;
+        _v.set(
+          Math.sin(a) * (ARENA.halfWidth + 6),
+          15 + Math.random() * 11,
+          Math.cos(a) * (ARENA.halfLength + 8),
+        );
+        const tint = Math.random() < 0.5 ? colour : GOLD;
+        this.particles.spawn(_v, _n.set(0, 1, 0), {
+          count: 55,
+          spread: 0.2,
+          speed: 15,
+          size: 0.42,
+          life: 1.6,
+          color: tint,
+          gravity: 4,
+          drag: 0.9,
+        });
+        this.rings.spawn(
+          _v,
+          _n.copy(this.chase.camera.position).sub(_v).normalize(),
+          9,
+          tint.getHex(),
+          0.5,
+        );
+        this.audio.firework();
       });
     }
-    this.rings.spawn(
-      _v.set(0, ARENA.goal.height * 0.5, (scorer === 'blue' ? 1 : -1) * ARENA.halfLength),
-      _n.set(0, 0, scorer === 'blue' ? -1 : 1),
-      26,
-      scorer === 'blue' ? TEAM.blue.glow : TEAM.orange.glow,
-      0.85,
-    );
   }
 
   private onPadPickup(position: THREE.Vector3, big: boolean) {
@@ -431,15 +739,12 @@ export class Game {
   // -------------------------------------------------------------------------
 
   private updateVisuals(dt: number) {
-    // Cars
-    const cars = [this.playerCar, this.botCar];
-    for (let i = 0; i < cars.length; i++) {
-      const car = cars[i];
-      const mesh = this.carMeshes[i];
+    for (const r of this.racers) {
+      const { car, mesh } = r;
       // Wrecked or benched cars are parked under the pitch — don't draw them.
-      mesh.setVisible(car.active);
-      if (!car.active) {
-        this.carTrails[i].push(car.position, this.trailSide.set(1, 0, 0), 0, dt);
+      mesh.setVisible(car.active && r.enrolled);
+      if (!car.active || !r.enrolled) {
+        r.trail.push(car.position, this.trailSide.set(1, 0, 0), 0, dt);
         continue;
       }
       mesh.group.position.copy(car.position);
@@ -455,7 +760,7 @@ export class Game {
       // edge-on as a flat plank.
       this.trailSide.copy(this.chase.camera.position).sub(_v).cross(car.forward).normalize();
       if (!isFinite(this.trailSide.x)) this.trailSide.copy(car.right);
-      this.carTrails[i].push(_v, this.trailSide, strength, dt);
+      r.trail.push(_v, this.trailSide, strength, dt);
 
       if (car.isBoosting && Math.random() < 0.75) {
         _n.copy(car.forward).multiplyScalar(-6).addScaledVector(car.velocity, 0.35);
@@ -492,7 +797,7 @@ export class Game {
 
       // Ball contact: shake only on genuinely hard hits. No burst VFX — a ring
       // on every touch fires constantly while dribbling and reads as noise.
-      if (car.ballHitEvent && car === this.playerCar && car.ballHitEvent.strength > 0.3) {
+      if (car.ballHitEvent && r === this.player && car.ballHitEvent.strength > 0.3) {
         this.chase.addShake((car.ballHitEvent.strength - 0.3) * 0.7);
       }
 
@@ -520,11 +825,22 @@ export class Game {
     this.padMesh.update(dt, this.elapsed);
     this.particles.update(dt);
     this.rings.update(dt);
+    this.runFx(dt);
+
+    if (this.blast > 0) {
+      this.blast = Math.max(0, this.blast - dt * 1.7);
+      // Cools from white to the scoring team's colour as it fades.
+      this.blastLight.intensity = this.blast * this.blast * 2600;
+      this.blastLight.color.setHex(0xffffff).lerp(
+        this.goalTeam === 'blue' ? TEAM_COLOR.orange : TEAM_COLOR.blue,
+        1 - this.blast,
+      );
+    }
 
     if (this.goalFlashTimer > 0) {
       this.goalFlashTimer -= dt;
-      this.arena.flashGoal(this.goalTeam, this.elapsed);
-      this.bloom.strength = 0.5 + Math.abs(Math.sin(this.elapsed * 14)) * 0.28;
+      this.arena.flashGoal(this.goalTeam, this.elapsed, this.blast);
+      this.bloom.strength = 0.5 + Math.abs(Math.sin(this.elapsed * 14)) * 0.28 + this.blast * 0.9;
       if (this.goalFlashTimer <= 0) {
         this.arena.resetGoals();
         this.bloom.strength = 0.5;
@@ -534,38 +850,63 @@ export class Game {
 
   // -------------------------------------------------------------------------
 
+  private setMenuOpen(open: boolean) {
+    if (open === this.menu.open) return;
+    if (open) {
+      this.menu.show();
+      this.state.setPaused(true);
+    } else {
+      this.menu.hide();
+      this.input.clearHeld();
+      this.state.setPaused(false);
+    }
+    this.state.revision++;
+  }
+
   private handleGlobalKeys() {
-    if (this.input.consume('KeyC')) this.hud.setCameraMode(this.chase.toggleMode());
-    if (this.input.consume('KeyB')) {
-      this.playerCar.infiniteBoost = !this.playerCar.infiniteBoost;
-      this.hud.setInfiniteBoost(this.playerCar.infiniteBoost);
+    if (this.input.consume('menu')) this.setMenuOpen(!this.menu.open);
+    // Everything else is game-only; the menu owns the keyboard while it's up.
+    if (this.menu.open) return;
+
+    if (this.input.consume('camera')) {
+      this.settings.camera = this.chase.toggleMode();
+      this.applySettings();
     }
-    if (this.input.consume('KeyH')) this.hud.toggleControls();
-    if (this.input.consume('KeyM')) {
-      this.audio.setMuted(!this.audio.muted);
-      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    if (this.input.consume('infiniteBoost')) {
+      this.settings.infiniteBoost = !this.settings.infiniteBoost;
+      this.applySettings();
     }
-    if (this.input.consume('Equal') || this.input.consume('NumpadAdd')) {
-      this.audio.changeVolume(1);
-      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    if (this.input.consume('toggleHud')) this.hud.toggleControls();
+    if (this.input.consume('mute')) {
+      this.settings.muted = !this.settings.muted;
+      this.applySettings();
     }
-    if (this.input.consume('Minus') || this.input.consume('NumpadSubtract')) {
-      this.audio.changeVolume(-1);
-      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    if (this.input.consume('volumeUp')) {
+      this.settings.volume = this.audio.changeVolume(1);
+      this.applySettings();
     }
-    if (this.input.consume('Escape')) this.state.togglePause();
-    if (this.input.consume('KeyP')) this.togglePractice();
-    if (this.input.consume('KeyR')) this.resetPlayer();
-    // T restarts the whole match. kickoff() honours practice mode, so the bot
-    // stays off if you had it off.
-    if (this.input.consume('KeyT') || (this.input.consume('Enter') && this.state.phase === 'ended')) {
+    if (this.input.consume('volumeDown')) {
+      this.settings.volume = this.audio.changeVolume(-1);
+      this.applySettings();
+    }
+    if (this.input.consume('practice')) this.togglePractice();
+    if (this.input.consume('resetCar')) this.resetPlayer();
+    // Restarts the whole match. kickoff() honours the roster, so practice mode
+    // and the current team size stay as they were.
+    if (
+      this.input.consume('restartMatch') ||
+      (this.state.phase === 'ended' && (this.input.consumeKey('Enter') || this.input.consumeNav('accept')))
+    ) {
       this.restartMatch();
     }
   }
 
-  /** Fresh match: 0-0, full clock, both cars and the ball back at kickoff. */
+  /** Fresh match: 0-0, full clock, everyone back at kickoff. */
   restartMatch() {
     this.state.reset();
+    // reset() drops us straight into the countdown; if this came from the menu,
+    // stay paused until the player closes it.
+    if (this.menu?.open) this.state.setPaused(true);
     this.kickoff();
     this.audio.whistle();
   }
@@ -575,23 +916,46 @@ export class Game {
     const z = THREE.MathUtils.clamp(this.ball.position.z - 18, -ARENA.halfLength + 6, 0);
     const yaw = Math.atan2(this.ball.position.x - 0, this.ball.position.z - z);
     this.playerCar.respawn(0, z, yaw, this.playerCar.boost);
-    this.carTrails[0].teleport(this.playerCar.position);
+    this.player.trail.teleport(this.playerCar.position);
     this.chase.snap(this.playerCar, this.ball);
   }
 
+  /**
+   * Kickoff. The spot set is picked at random, so you get straight-on, near or
+   * diagonal starts — and both teams always mirror each other, which is what
+   * keeps the race to the ball fair.
+   */
   kickoff() {
-    this.playerCar.respawn(KICKOFF.blue.x, KICKOFF.blue.z, KICKOFF.blue.yaw, CAR.boost.start);
-    if (this.practiceMode) this.botCar.setActive(false);
-    else this.botCar.respawn(KICKOFF.orange.x, KICKOFF.orange.z, KICKOFF.orange.yaw, CAR.boost.start);
+    const size = TEAM_SIZE[this.settings.mode];
+    const sets = KICKOFF_SETS[size] ?? KICKOFF_SETS[1];
+    const set = sets[Math.floor(Math.random() * sets.length)];
+
+    for (const r of this.racers) {
+      if (!r.enrolled) {
+        r.car.setActive(false);
+        r.car.wrecked = false;
+        r.car.demoTimer = 0;
+        r.mesh.setVisible(false);
+        r.trail.teleport(r.car.position);
+        continue;
+      }
+      const spot = KICKOFF_SPOTS[set[Math.min(r.slot, set.length - 1)]];
+      const spawn = kickoffSpawn(r.team, spot);
+      r.car.respawn(spawn.x, spawn.z, spawn.yaw, CAR.boost.start);
+      r.mesh.setVisible(true);
+      r.trail.teleport(r.car.position);
+      r.bot?.reset();
+    }
+
     this.ball.reset(new THREE.Vector3(0, BALL.radius + 0.02, 0));
     this.ballMesh.reset(this.ball.position);
     this.pads.reset();
-    this.bot.reset();
     this.arena.resetGoals();
     this.bloom.strength = 0.5;
     this.goalFlashTimer = 0;
-    const cars = [this.playerCar, this.botCar];
-    for (let i = 0; i < this.carTrails.length; i++) this.carTrails[i].teleport(cars[i].position);
+    this.blast = 0;
+    this.blastLight.intensity = 0;
+    this.fx.length = 0;
     this.chase.snap(this.playerCar, this.ball);
   }
 
