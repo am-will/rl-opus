@@ -5,10 +5,12 @@ import { IG_CAR, PhysicsWorld, curve } from './PhysicsWorld';
 import type { Ball } from './Ball';
 
 export interface CarInput {
-  /** -1..1, forward/back on the ground, pitch in the air. */
+  /** -1..1, drive forward/back. Deliberately has no effect in the air. */
   throttle: number;
   /** -1..1, steer on the ground, yaw in the air. */
   steer: number;
+  /** -1..1 nose down/up in the air, and the forward/back axis of a dodge. */
+  pitch: number;
   /** -1..1, explicit air roll (Q/E). */
   roll: number;
   jump: boolean;
@@ -20,6 +22,7 @@ export interface CarInput {
 export const emptyInput = (): CarInput => ({
   throttle: 0,
   steer: 0,
+  pitch: 0,
   roll: 0,
   jump: false,
   boost: false,
@@ -385,7 +388,9 @@ export class Car {
     // Holding the air-roll modifier turns steering into roll (RL's directional air roll).
     const rollInput = THREE.MathUtils.clamp(input.roll + (input.drift ? input.steer : 0), -1, 1);
     const yawInput = input.drift ? 0 : input.steer;
-    const pitchInput = input.throttle;
+    // Pitch is its own axis, not the throttle — holding accelerate through an
+    // aerial must not drop the nose.
+    const pitchInput = input.pitch;
 
     _qi.copy(this.quaternion).invert();
     _localAv.copy(this.angVel()).applyQuaternion(_qi);
@@ -469,7 +474,8 @@ export class Car {
     if (pressed && !this.grounded && this.hasSecondJump && !this.flipping && this.airTimer < CAR.jump.window) {
       this.hasSecondJump = false;
       const dirX = this.input.steer;
-      const dirZ = this.input.throttle;
+      // Dodges follow the same axis as pitch, the way the stick does in RL.
+      const dirZ = this.input.pitch;
       const mag = Math.hypot(dirX, dirZ);
       if (mag > CAR.jump.deadzone) {
         this.startFlip(dirX / mag, dirZ / mag);

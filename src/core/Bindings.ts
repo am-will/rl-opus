@@ -10,6 +10,8 @@ export type ActionId =
   | 'reverse'
   | 'steerLeft'
   | 'steerRight'
+  | 'pitchDown'
+  | 'pitchUp'
   | 'jump'
   | 'boost'
   | 'drift'
@@ -35,10 +37,12 @@ export interface ActionDef {
 }
 
 export const ACTIONS: ActionDef[] = [
-  { id: 'throttle', label: 'Throttle', group: 'drive', hint: 'Pitch down in air' },
-  { id: 'reverse', label: 'Reverse', group: 'drive', hint: 'Pitch up in air' },
+  { id: 'throttle', label: 'Throttle', group: 'drive', hint: 'Drive only — never pitches' },
+  { id: 'reverse', label: 'Reverse', group: 'drive', hint: 'Drive only — never pitches' },
   { id: 'steerLeft', label: 'Steer left', group: 'drive', hint: 'Yaw left in air' },
   { id: 'steerRight', label: 'Steer right', group: 'drive', hint: 'Yaw right in air' },
+  { id: 'pitchDown', label: 'Pitch down', group: 'drive', hint: 'In air · forward dodge' },
+  { id: 'pitchUp', label: 'Pitch up', group: 'drive', hint: 'In air · back dodge' },
   { id: 'jump', label: 'Jump', group: 'drive', hint: 'Tap twice to flip' },
   { id: 'boost', label: 'Boost', group: 'drive' },
   { id: 'drift', label: 'Powerslide', group: 'drive', hint: 'Air roll while airborne' },
@@ -84,6 +88,10 @@ export function defaultKeyMap(): KeyMap {
     reverse: K('KeyS', 'ArrowDown'),
     steerLeft: K('KeyA', 'ArrowLeft'),
     steerRight: K('KeyD', 'ArrowRight'),
+    // A keyboard has no stick, so pitch shares the drive keys by default —
+    // clear these two rows in the menu if you want W/S to be drive-only.
+    pitchDown: K('KeyW', 'ArrowUp'),
+    pitchUp: K('KeyS', 'ArrowDown'),
     jump: K('Space'),
     boost: K('ShiftLeft', 'ShiftRight'),
     drift: K('ControlLeft', 'PageDown'),
@@ -112,10 +120,13 @@ const P = (...b: (PadBinding | null)[]): (PadBinding | null)[] => [b[0] ?? null,
  */
 export function defaultPadMap(): PadMap {
   return {
-    throttle: P(B(7), AX(1, -1)),
-    reverse: P(B(6), AX(1, 1)),
+    // Triggers drive and nothing else — pitch belongs to the stick, as in RL.
+    throttle: P(B(7)),
+    reverse: P(B(6)),
     steerLeft: P(AX(0, -1), B(14)),
     steerRight: P(AX(0, 1), B(15)),
+    pitchDown: P(AX(1, -1)),
+    pitchUp: P(AX(1, 1)),
     jump: P(B(0)),
     boost: P(B(1)),
     drift: P(B(2)),

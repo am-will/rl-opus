@@ -319,6 +319,7 @@ export class Input {
   readCarInput(out: CarInput): CarInput {
     out.throttle = clampAxis(this.value('throttle') - this.value('reverse'));
     out.steer = clampAxis(this.value('steerRight') - this.value('steerLeft'));
+    out.pitch = clampAxis(this.value('pitchDown') - this.value('pitchUp'));
     out.roll = clampAxis(this.value('airRollRight') - this.value('airRollLeft'));
     out.jump = this.down('jump');
     out.boost = this.down('boost');

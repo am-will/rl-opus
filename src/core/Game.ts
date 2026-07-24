@@ -342,6 +342,7 @@ export class Game {
         keys: `${key('throttle')} ${key('steerLeft')} ${key('reverse')} ${key('steerRight')}`,
         action: 'Drive / steer',
       },
+      { keys: `${key('pitchDown')} / ${key('pitchUp')}`, action: 'Pitch nose down / up (in air)' },
       { keys: key('jump'), action: 'Jump · tap twice to flip' },
       { keys: key('boost'), action: 'Boost' },
       { keys: key('drift'), action: 'Powerslide · air roll' },

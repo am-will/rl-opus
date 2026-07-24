@@ -12,7 +12,7 @@
 
 import type { CarInput } from '../physics/Car';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 
 export const MSG = {
   input: 0x10,
@@ -40,16 +40,17 @@ export type NetPhase = (typeof PHASES)[number];
 // Input
 // ---------------------------------------------------------------------------
 
-/** throttle/steer/roll quantised to a byte each; the rest are bits. */
+/** throttle/steer/pitch/roll quantised to a byte each; the rest are bits. */
 export function encodeInput(tick: number, input: CarInput): ArrayBuffer {
-  const buf = new ArrayBuffer(9);
+  const buf = new ArrayBuffer(10);
   const view = new DataView(buf);
   view.setUint8(0, MSG.input);
   view.setUint32(1, tick >>> 0, true);
   view.setInt8(5, quantAxis(input.throttle));
   view.setInt8(6, quantAxis(input.steer));
   view.setInt8(7, quantAxis(input.roll));
-  view.setUint8(8, (input.jump ? 1 : 0) | (input.boost ? 2 : 0) | (input.drift ? 4 : 0));
+  view.setInt8(8, quantAxis(input.pitch));
+  view.setUint8(9, (input.jump ? 1 : 0) | (input.boost ? 2 : 0) | (input.drift ? 4 : 0));
   return buf;
 }
 
@@ -58,7 +59,8 @@ export function decodeInput(view: DataView, out: CarInput): number {
   out.throttle = view.getInt8(5) / 127;
   out.steer = view.getInt8(6) / 127;
   out.roll = view.getInt8(7) / 127;
-  const flags = view.getUint8(8);
+  out.pitch = view.getInt8(8) / 127;
+  const flags = view.getUint8(9);
   out.jump = (flags & 1) !== 0;
   out.boost = (flags & 2) !== 0;
   out.drift = (flags & 4) !== 0;
@@ -109,7 +111,7 @@ export interface Snapshot {
 }
 
 const BODY_FLOATS = 13; // position, quaternion, linear + angular velocity
-const CAR_BYTES = BODY_FLOATS * 4 + 2 + 4; // + boost + flags + packed input
+const CAR_BYTES = BODY_FLOATS * 4 + 2 + 5; // + boost + flags + packed input
 const PAD_BYTES = 8; // 34 pads, rounded up with room to spare
 const HEADER_BYTES = 1 + 4 + 1 + 1 + 1 + 4 + 4;
 const SNAPSHOT_BYTES = HEADER_BYTES + BODY_FLOATS * 4 + CAR_BYTES * 2 + PAD_BYTES;
@@ -145,6 +147,8 @@ export function encodeSnapshot(s: Snapshot): ArrayBuffer {
     view.setInt8(o, quantAxis(car.input.steer));
     o += 1;
     view.setInt8(o, quantAxis(car.input.roll));
+    o += 1;
+    view.setInt8(o, quantAxis(car.input.pitch));
     o += 1;
     view.setUint8(
       o,
@@ -189,6 +193,8 @@ export function decodeSnapshot(view: DataView): Snapshot {
     o += 1;
     const roll = view.getInt8(o) / 127;
     o += 1;
+    const pitch = view.getInt8(o) / 127;
+    o += 1;
     const bits = view.getUint8(o);
     o += 1;
     cars.push({
@@ -199,6 +205,7 @@ export function decodeSnapshot(view: DataView): Snapshot {
         throttle,
         steer,
         roll,
+        pitch,
         jump: (bits & 1) !== 0,
         boost: (bits & 2) !== 0,
         drift: (bits & 4) !== 0,

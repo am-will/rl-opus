@@ -82,6 +82,7 @@ export class Bot {
     const angle = Math.atan2(cross, dot);
 
     out.roll = 0;
+    out.pitch = 0;
     out.drift = false;
     out.boost = false;
     out.jump = false;
@@ -107,14 +108,15 @@ export class Bot {
         this.recoverTimer += dt;
         if (this.recoverTimer > 0.4) this.recoverTimer = 0;
         out.steer = 0;
+        out.throttle = 0;
         out.jump = this.recoverTimer < 0.08;
         // Roll rights a car on its side; a car on its nose needs pitch instead.
-        // (+throttle pitches the nose down, +roll rolls right.)
-        out.throttle = Math.abs(car.forward.y) > 0.5 ? (car.forward.y < 0 ? -1 : 1) : 0;
+        // (+pitch drops the nose, +roll rolls right.)
+        out.pitch = Math.abs(car.forward.y) > 0.5 ? (car.forward.y < 0 ? -1 : 1) : 0;
         if (Math.abs(car.right.y) > 0.12) out.roll = car.right.y >= 0 ? 1 : -1;
         // Dead flat on the roof: neither axis has an error to chase, so commit
         // to a direction and let the roll break the symmetry.
-        else if (out.throttle === 0) out.roll = 1;
+        else if (out.pitch === 0) out.roll = 1;
         return out;
       }
     }
@@ -192,10 +194,11 @@ export class Bot {
       }
     }
 
-    // Simple flip follow-through: press jump again with throttle held.
+    // Simple flip follow-through: press jump again while pitching forward, which
+    // is what turns the second jump into a dodge.
     if (!car.grounded && this.wantsJump && this.jumpHold <= 0 && ballDist < 4.5) {
       out.jump = true;
-      out.throttle = 1;
+      out.pitch = 1;
       this.wantsJump = false;
     }
 

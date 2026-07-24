@@ -14,7 +14,7 @@ keyboard and a controller. Every binding below is a default, not a fixture.
 
 | Key | Action |
 | --- | --- |
-| `W` `A` `S` `D` / arrows | Drive and steer. In the air, `W`/`S` pitch (throttle pitches the nose down) and `A`/`D` yaw |
+| `W` `A` `S` `D` / arrows | Drive and steer. In the air, `A`/`D` yaw and `W`/`S` pitch (nose down / up) |
 | `Space` | Jump. Tap twice for a directional flip (the direction you hold sets the flip) |
 | `Space` (upside down) | Hop off the surface — then air-roll yourself upright |
 | `Shift` | Boost |
@@ -31,9 +31,15 @@ keyboard and a controller. Every binding below is a default, not a fixture.
 | `+` / `-` | Raise / lower game and SFX volume |
 
 **Controller.** Any standard-mapping pad is picked up automatically, with
-Rocket League's layout: RT throttle, LT reverse, left stick steer, `A` jump,
-`B` boost, `X` powerslide, `Y` ball cam, LB/RB air roll, `Menu` for the menu.
-Triggers and stick are analogue. The menu itself is navigable with the D-pad.
+Rocket League's layout: RT throttle, LT reverse, left stick steer/yaw and pitch,
+`A` jump, `B` boost, `X` powerslide, `Y` ball cam, LB/RB air roll, `Menu` for the
+menu. Triggers and stick are analogue. The menu is navigable with the D-pad.
+
+**Pitch is its own axis**, bound separately from throttle — the triggers drive
+and nothing else, so holding accelerate through an aerial never drops the nose.
+On a keyboard, `W`/`S` are bound to both drive and pitch by default (no stick to
+put it on); clear the two **Pitch** rows in the keyboard tab if you want them to
+be drive-only.
 
 **Modes.** 1v1 against a bot, or 2v2 — you and a bot against two bots. The
 closest car on each side takes the ball while its teammate holds a supporting
