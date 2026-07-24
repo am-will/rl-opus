@@ -25,6 +25,20 @@ const zeroed = <T>(fill: () => T): Record<ActionId, T> => {
 };
 
 /**
+ * Menu navigation is read straight off the pad rather than through the binding
+ * table — you have to be able to reach the menu and fix a broken binding with
+ * whatever the controller's D-pad and face buttons actually are.
+ */
+export type NavDir = 'up' | 'down' | 'left' | 'right' | 'accept' | 'back';
+const NAV_DIRS: NavDir[] = ['up', 'down', 'left', 'right', 'accept', 'back'];
+const NAV_KEYS: Partial<Record<NavDir, string>> = {
+  up: 'ArrowUp',
+  down: 'ArrowDown',
+  left: 'ArrowLeft',
+  right: 'ArrowRight',
+};
+
+/**
  * Keyboard + gamepad, funnelled through the remappable action list. Driving
  * actions are analogue where the hardware allows it; one-shot game actions are
  * drained with consume().
@@ -46,6 +60,9 @@ export class Input {
   private padIndex: number | null = null;
   private rawButtons: number[] = [];
   private rawAxes: number[] = [];
+
+  private navPressed: Record<NavDir, boolean> = navRecord();
+  private navWasDown: Record<NavDir, boolean> = navRecord();
 
   private keyCapture: ((code: string) => void) | null = null;
   private padCapture: ((binding: PadBinding) => void) | null = null;
@@ -126,11 +143,16 @@ export class Input {
       this.rawButtons = [];
       this.rawAxes = [];
       for (const id of ACTION_IDS) this.padWasDown[id] = false;
+      for (const d of NAV_DIRS) {
+        this.navPressed[d] = false;
+        this.navWasDown[d] = false;
+      }
       return;
     }
 
     const buttons = gp.buttons.map((b) => (typeof b === 'object' ? b.value : Number(b)));
     const axes = Array.from(gp.axes);
+    this.updateNav(buttons, axes);
 
     if (this.padCapture) {
       const captured = this.detectPadPress(buttons, axes);
@@ -177,6 +199,37 @@ export class Input {
       }
     }
     return null;
+  }
+
+  private updateNav(buttons: number[], axes: number[]) {
+    const btn = (i: number) => (buttons[i] ?? 0) > PRESS_THRESHOLD;
+    const ax = (i: number, dir: 1 | -1) => (axes[i] ?? 0) * dir > 0.55;
+    const state: Record<NavDir, boolean> = {
+      up: btn(12) || ax(1, -1),
+      down: btn(13) || ax(1, 1),
+      left: btn(14) || ax(0, -1),
+      right: btn(15) || ax(0, 1),
+      accept: btn(0),
+      back: btn(1),
+    };
+    for (const d of NAV_DIRS) {
+      this.navPressed[d] = state[d] && !this.navWasDown[d];
+      this.navWasDown[d] = state[d];
+    }
+  }
+
+  /** True once per press. Arrow keys count too, so the menu works without a pad. */
+  consumeNav(dir: NavDir): boolean {
+    if (this.navPressed[dir]) {
+      this.navPressed[dir] = false;
+      return true;
+    }
+    const key = NAV_KEYS[dir];
+    if (key && this.keysPressed.has(key)) {
+      this.keysPressed.delete(key);
+      return true;
+    }
+    return false;
   }
 
   private detectPadPress(buttons: number[], axes: number[]): PadBinding | null {
@@ -243,6 +296,10 @@ export class Input {
       this.padPressed[id] = false;
       this.padWasDown[id] = true; // don't fire an edge on the button that closed the menu
     }
+    for (const d of NAV_DIRS) {
+      this.navPressed[d] = false;
+      this.navWasDown[d] = true;
+    }
   }
 
   readCarInput(out: CarInput): CarInput {
@@ -278,6 +335,10 @@ export class Input {
   get capturing() {
     return this.keyCapture !== null || this.padCapture !== null;
   }
+}
+
+function navRecord(): Record<NavDir, boolean> {
+  return { up: false, down: false, left: false, right: false, accept: false, back: false };
 }
 
 function clampAxis(v: number) {

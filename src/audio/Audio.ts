@@ -138,10 +138,19 @@ export class Audio {
 
   /** Change the whole game mix, including engine audio and one-shot SFX. */
   changeVolume(direction: 1 | -1) {
-    this.volume = Math.min(1, Math.max(0, this.volume + direction * VOLUME_STEP));
+    return this.setVolume(this.volume + direction * VOLUME_STEP);
+  }
+
+  /** Absolute 0..1, for the menu slider. */
+  setVolume(v: number) {
+    this.volume = Math.min(1, Math.max(0, v));
     if (this.ctx && !this.muted) {
       this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
     }
+    return this.volume;
+  }
+
+  get volume01() {
     return this.volume;
   }
 
@@ -253,17 +262,54 @@ export class Audio {
     });
   }
 
-  /** Chord stab plus a crowd swell. */
+  /** Detonation, chord stab and a crowd that keeps roaring through the replay. */
   goal() {
     if (!this.ctx || this.muted) return;
+
+    // The blast itself: cracking transient over a sub that drops through the floor.
+    this.noiseHit(0.7, 0.45, 2600, 0.4, 'lowpass');
+    this.noiseHit(0.14, 0.34, 4200, 0.7, 'highpass');
+    this.burst({ type: 'sine', freq: 210, endFreq: 26, duration: 1.1, gain: 0.5 });
+    this.burst({ type: 'sawtooth', freq: 150, endFreq: 38, duration: 0.5, gain: 0.2, filter: 800 });
+
     const base = 196; // G3
     [1, 1.5, 2, 3].forEach((mult, i) => {
       setTimeout(
         () => this.burst({ type: 'triangle', freq: base * mult, duration: 0.9, gain: 0.15, filter: 4000 }),
-        i * 55,
+        180 + i * 55,
       );
     });
-    // Crowd: slow noise swell.
+
+    this.crowd(3.4, 0.26);
+  }
+
+  /** Stand pyro during the celebration: a crack, then falling sparkle. */
+  firework() {
+    if (!this.ctx || this.muted) return;
+    this.noiseHit(0.22, 0.2, 2200, 0.6, 'bandpass');
+    this.burst({ type: 'sine', freq: 320, endFreq: 60, duration: 0.28, gain: 0.16 });
+    for (let i = 0; i < 5; i++) {
+      setTimeout(
+        () =>
+          this.burst({
+            type: 'triangle',
+            freq: 1500 + Math.random() * 1800,
+            duration: 0.09,
+            gain: 0.05,
+          }),
+        90 + i * 70 + Math.random() * 60,
+      );
+    }
+  }
+
+  /** Menu blip. Deliberately tiny — it fires on every click. */
+  uiTick(high = false) {
+    this.burst({ type: 'square', freq: high ? 900 : 620, duration: 0.045, gain: 0.05, filter: 2600 });
+  }
+
+  /** Filtered noise swell — the stands reacting. */
+  private crowd(duration: number, gain: number) {
+    if (!this.ctx || this.muted) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const src = ctx.createBufferSource();
@@ -275,11 +321,11 @@ export class Audio {
     f.Q.value = 0.5;
     const gn = ctx.createGain();
     gn.gain.setValueAtTime(0.0001, t);
-    gn.gain.exponentialRampToValueAtTime(0.22, t + 0.35);
-    gn.gain.exponentialRampToValueAtTime(0.0001, t + 2.4);
+    gn.gain.exponentialRampToValueAtTime(gain, t + 0.35);
+    gn.gain.exponentialRampToValueAtTime(0.0001, t + duration);
     src.connect(f).connect(gn).connect(this.master);
     src.start(t);
-    src.stop(t + 2.5);
+    src.stop(t + duration + 0.1);
   }
 
   /** Demolition: a crack, a body of noise, and a low sub drop. */
