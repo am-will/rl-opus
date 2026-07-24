@@ -328,8 +328,9 @@ export class Game {
     this.hud.setCameraMode(s.camera);
     this.hud.setInfiniteBoost(s.infiniteBoost);
     this.hud.setSound(s.muted, this.audio.volumePercent);
-    this.hud.setPractice(s.practice);
-    this.hud.setMode(s.mode);
+    this.hud.setPractice(s.practice && !this.onlineEngaged);
+    // Online is always 1v1, whatever the offline mode is set to.
+    this.hud.setMode(this.onlineEngaged ? '1v1' : s.mode);
     this.hud.setControls(this.controlRows());
   }
 
@@ -645,6 +646,9 @@ export class Game {
 
   /** The host scored it; play the same celebration locally. */
   onNetGoal(scorer: 'blue' | 'orange', at: THREE.Vector3) {
+    // The guest never runs scoreGoal(), so the banner needs telling who it was.
+    this.state.lastScorer = scorer;
+    this.state.revision++;
     this.goalTeam = scorer === 'blue' ? 'orange' : 'blue';
     this.goalFlashTimer = MATCH.goalCelebration;
     this.explodeGoal(scorer, at);
