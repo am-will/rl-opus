@@ -127,9 +127,18 @@ export class HUD {
 
   private toastTimer = 0;
 
-  setSound(muted: boolean, volumePercent: number) {
-    this.el.soundFlag.textContent = muted ? `Sound: Off (${volumePercent}%)` : `Sound: ${volumePercent}%`;
-    this.el.soundFlag.classList.toggle('off', muted);
+  /**
+   * `blocked` means the browser hasn't let the audio context start yet. All
+   * three silent states get a warning colour — dimming the flag, which is what
+   * this used to do, hid the very thing the player needs to notice.
+   */
+  setSound(muted: boolean, volumePercent: number, blocked = false) {
+    const el = this.el.soundFlag;
+    if (blocked) el.textContent = 'Sound: Click to enable';
+    else if (muted) el.textContent = 'Sound: Muted — press M';
+    else if (volumePercent === 0) el.textContent = 'Sound: 0% — press +';
+    else el.textContent = `Sound: ${volumePercent}%`;
+    el.classList.toggle('warn', blocked || muted || volumePercent === 0);
   }
 
   setInfiniteBoost(on: boolean) {

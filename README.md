@@ -49,7 +49,7 @@ position. Bot skill is Rookie / Pro / All-Star.
 picked at random and mirrored, so both sides always start the same distance from
 the ball.
 
-**Demolitions.** Hit an opponent while you're supersonic (2200 uu/s, 79 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump. Teammates can't demo each other.
+**Demolitions.** Hit an opponent while you're supersonic (2060 uu/s, 74 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump. Teammates can't demo each other.
 
 **Supersonic** shows in the wheels rather than a badge on the car: the rims run
 hot and each tyre lays a line of embers along its track.
@@ -77,7 +77,7 @@ It runs inside the Workers free tier — about 130 matches a day. Full write-up 
 
 Constants come from the Rocket League community's reverse-engineering work, converted at 1 uu = 1 cm. Verified in-engine:
 
-- Throttle-only top speed **1411 uu/s** (RL: 1410); boosting caps at **2300 uu/s** exactly.
+- Throttle-only top speed **1411 uu/s** (RL: 1410); boosting caps at **2160 uu/s**, trimmed ~6 % under RL's 2300 because flat out was a handful to steer. Supersonic moves with it, at 2060.
 - Turn radius is the RL curvature table scaled 1.18× — a shade tighter than stock, which felt too wide.
 - Boost drains **33.3/s**; big pads 100, small pads 12, respawning at 10 s / 4 s.
 - Ball restitution ≈ **0.63**, radius 91.25 uu, mass 30 (car is 180 — exactly 6×).

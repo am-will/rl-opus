@@ -434,6 +434,13 @@ body {
   opacity: 0.45;
 }
 
+/* Something the player needs to act on — never dimmed. */
+.flag.warn {
+  border-color: #ffd166;
+  color: #ffd79a;
+  box-shadow: 0 0 18px rgba(255, 200, 90, 0.3);
+}
+
 /* ------------------------------------------------------------------ toast */
 
 .toast {

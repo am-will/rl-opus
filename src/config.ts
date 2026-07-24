@@ -124,8 +124,15 @@ export const CAR = {
   colliderRound: 0.03, // small round on the box so we slide along walls instead of catching edges
 
   maxDriveSpeed: uu(1410), // (RL) throttle-only top speed
-  supersonic: uu(2200), // (RL) threshold
-  maxSpeed: uu(2300), // (RL) absolute cap
+  /**
+   * Trimmed ~6% below the RL numbers (2200 / 2300). Flat out on boost the car
+   * was quick enough to be a handful — the cap and the threshold move together
+   * so supersonic stays reachable, and normal throttle-only driving is
+   * untouched. Lower top speed also tightens the turn radius up there, which
+   * is where the control was going.
+   */
+  supersonic: uu(2060), // threshold
+  maxSpeed: uu(2160), // absolute cap
 
   /** (RL) throttle acceleration falls off linearly to zero at maxDriveSpeed. */
   throttleCurve: [
@@ -243,8 +250,8 @@ export const CAR = {
 
 /** Supersonic contact wipes out the slower car. */
 export const DEMO = {
-  /** Attacker must be at or above this to demolish (RL supersonic threshold). */
-  minSpeed: uu(2200),
+  /** Attacker must be at or above this to demolish — i.e. supersonic. */
+  minSpeed: CAR.supersonic,
   /**
    * Centre-to-centre distance counted as a hit. Has to clear two cars parked
    * nose to nose (2 x half.z) or the colliders keep them apart and a head-on

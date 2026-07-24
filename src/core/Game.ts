@@ -237,15 +237,22 @@ export class Game {
       tick: (high?: boolean) => this.audio.uiTick(high),
     });
 
-    // Browsers only allow audio to start inside a user gesture.
+    // Browsers only allow audio to start inside a user gesture — and they can
+    // suspend the context again later (tab switch, autoplay policy, a gesture
+    // that arrived before this listener existed). So this stays subscribed and
+    // retries on every gesture until the context is actually running, rather
+    // than getting one shot at it.
     const wake = () => {
+      if (this.audio.running) return;
       this.audio.start();
-      this.audio.resume();
+      const resumed = this.audio.resume();
       this.audio.setVolume(this.settings.volume);
       this.audio.setMuted(this.settings.muted);
+      this.refreshSoundFlag();
+      resumed?.then(() => this.refreshSoundFlag());
     };
-    window.addEventListener('keydown', wake, { once: true });
-    window.addEventListener('pointerdown', wake, { once: true });
+    window.addEventListener('keydown', wake);
+    window.addEventListener('pointerdown', wake);
 
     window.addEventListener('resize', () => this.resize());
 
@@ -330,11 +337,20 @@ export class Game {
     const s = this.settings;
     this.hud.setCameraMode(s.camera);
     this.hud.setInfiniteBoost(s.infiniteBoost);
-    this.hud.setSound(s.muted, this.audio.volumePercent);
+    this.refreshSoundFlag();
     this.hud.setPractice(s.practice && !this.onlineEngaged);
     // Online is always 1v1, whatever the offline mode is set to.
     this.hud.setMode(this.onlineEngaged ? '1v1' : s.mode);
     this.hud.setControls(this.controlRows());
+  }
+
+  /**
+   * The one place the sound flag is written. Muted, zeroed and browser-blocked
+   * all look the same from the player's seat — silence — so the flag has to say
+   * which it is.
+   */
+  private refreshSoundFlag() {
+    this.hud.setSound(this.settings.muted, this.audio.volumePercent, this.audio.blocked);
   }
 
   /** Controls panel, rendered from the live bindings so rebinds show up. */

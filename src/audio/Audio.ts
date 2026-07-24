@@ -48,7 +48,17 @@ export class Audio {
   }
 
   resume() {
-    this.ctx?.resume();
+    return this.ctx?.resume();
+  }
+
+  /** True once the context is actually producing sound. */
+  get running() {
+    return this.ctx?.state === 'running';
+  }
+
+  /** Started but held suspended by the browser — the player needs to click. */
+  get blocked() {
+    return !this.ctx || this.ctx.state !== 'running';
   }
 
   private buildEngine() {
