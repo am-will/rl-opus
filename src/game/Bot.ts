@@ -14,12 +14,23 @@ const _flat = new THREE.Vector3();
  * around when it's on the wrong side of the ball, and defends when the ball is
  * heading at its own net. Reaction delay + aim jitter keep it beatable.
  */
+export type BotRole = 'attack' | 'support';
+
 export class Bot {
+  /**
+   * Set by the game each step: whoever on the team is closest to the ball
+   * attacks, everyone else holds a supporting position. Without this both cars
+   * in a 2v2 chase the same ball and take each other out of the play.
+   */
+  role: BotRole = 'attack';
   private think = 0;
   private aim = new THREE.Vector3();
   private jitter = new THREE.Vector3();
   private stuckTimer = 0;
   private reverseTimer = 0;
+  private beachedTimer = 0;
+  private recoverTimer = 0;
+  private recovering = false;
   private boostGate = 0;
   private wantsJump = false;
   private jumpHold = 0;
@@ -36,6 +47,9 @@ export class Bot {
     this.think = 0;
     this.stuckTimer = 0;
     this.reverseTimer = 0;
+    this.beachedTimer = 0;
+    this.recoverTimer = 0;
+    this.recovering = false;
     this.wantsJump = false;
     this.jumpHold = 0;
     this.aim.set(0, 0, 0);
@@ -72,6 +86,39 @@ export class Bot {
     out.boost = false;
     out.jump = false;
 
+    // --- Beached on our roof or side -----------------------------------------
+    // No wheels down, no height, no way back: hop off the surface and air roll
+    // upright, exactly the recovery the player has to make. Without this a bot
+    // that gets flipped in a challenge lies there for the rest of the match.
+    const upright = car.grounded && car.up.y > 0.7;
+    const beached = !car.grounded && car.position.y < 1.6 && car.up.y < 0.5;
+    if (beached) this.beachedTimer += dt;
+    else if (upright) this.beachedTimer = 0;
+
+    if (this.beachedTimer > 0.25) this.recovering = true;
+    if (this.recovering) {
+      if (upright) {
+        this.recovering = false;
+        this.beachedTimer = 0;
+        this.recoverTimer = 0;
+      } else {
+        // Hop clear of the surface, roll toward whichever side is up, repeat.
+        // The hop needs a fresh press each time, hence the tap cycle.
+        this.recoverTimer += dt;
+        if (this.recoverTimer > 0.4) this.recoverTimer = 0;
+        out.steer = 0;
+        out.jump = this.recoverTimer < 0.08;
+        // Roll rights a car on its side; a car on its nose needs pitch instead.
+        // (+throttle pitches the nose down, +roll rolls right.)
+        out.throttle = Math.abs(car.forward.y) > 0.5 ? (car.forward.y < 0 ? -1 : 1) : 0;
+        if (Math.abs(car.right.y) > 0.12) out.roll = car.right.y >= 0 ? 1 : -1;
+        // Dead flat on the roof: neither axis has an error to chase, so commit
+        // to a direction and let the roll break the symmetry.
+        else if (out.throttle === 0) out.roll = 1;
+        return out;
+      }
+    }
+
     // --- Unstick -------------------------------------------------------------
     if (car.grounded && car.speed < 2.2 && dist > 3) this.stuckTimer += dt;
     else this.stuckTimer = 0;
@@ -100,6 +147,13 @@ export class Bot {
 
     // Powerslide through hard corners, but only when actually moving.
     if (Math.abs(angle) > 1.0 && car.speed > 9) out.drift = true;
+
+    // Holding a support position: coast to a stop on the spot instead of
+    // orbiting it forever.
+    if (this.role === 'support' && dist < 7) {
+      out.throttle = car.speed > 5 ? -0.5 : 0;
+      out.drift = false;
+    }
 
     // --- Boost ---------------------------------------------------------------
     const aligned = Math.abs(angle) < 0.32;
@@ -174,18 +228,37 @@ export class Bot {
       return;
     }
 
-    // Contact point: sit behind the ball on the ball->goal line.
-    const goal = _a.set(THREE.MathUtils.clamp(ball.position.x * 0.35, -5, 5), ARENA.goal.height * 0.3, this.targetGoalZ);
-    const toGoal = goal.sub(predicted).normalize();
-    const offset = BALL.radius + CAR.half.z * 0.9;
-    _aim.copy(predicted).addScaledVector(toGoal, -offset);
+    if (this.role === 'support') {
+      // Sit goal-side of the ball and off to the far wing, so we're the outlet
+      // if our teammate wins the challenge and the cover if they don't.
+      const wing = -(Math.sign(ball.position.x) || 1) * 13;
+      _aim.set(
+        THREE.MathUtils.clamp(wing, -ARENA.halfWidth + 6, ARENA.halfWidth - 6),
+        0,
+        THREE.MathUtils.clamp(
+          ball.position.z + ownSide * 20,
+          Math.min(this.ownGoalZ * 0.92, 0),
+          Math.max(this.ownGoalZ * 0.92, 0),
+        ),
+      );
+    } else {
+      // Contact point: sit behind the ball on the ball->goal line.
+      const goal = _a.set(
+        THREE.MathUtils.clamp(ball.position.x * 0.35, -5, 5),
+        ARENA.goal.height * 0.3,
+        this.targetGoalZ,
+      );
+      const toGoal = goal.sub(predicted).normalize();
+      const offset = BALL.radius + CAR.half.z * 0.9;
+      _aim.copy(predicted).addScaledVector(toGoal, -offset);
 
-    // If we're already past the ball we'd knock it backwards; swing wide instead.
-    const ballFromCar = _b.copy(predicted).sub(car.position);
-    if (ballFromCar.dot(toGoal) < 0) {
-      const side = Math.sign(car.position.x - predicted.x) || 1;
-      _aim.x += side * 7.5;
-      _aim.z -= goalDir * 3.0;
+      // If we're already past the ball we'd knock it backwards; swing wide instead.
+      const ballFromCar = _b.copy(predicted).sub(car.position);
+      if (ballFromCar.dot(toGoal) < 0) {
+        const side = Math.sign(car.position.x - predicted.x) || 1;
+        _aim.x += side * 7.5;
+        _aim.z -= goalDir * 3.0;
+      }
     }
 
     // Grab a big pad when low and it's roughly on the way.
