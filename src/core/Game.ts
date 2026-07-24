@@ -138,6 +138,7 @@ export class Game {
     this.input = new Input();
     this.hud.setCameraMode(this.chase.mode);
     this.hud.setInfiniteBoost(false);
+    this.hud.setSound(this.audio.muted, this.audio.volumePercent);
 
     // Browsers only allow audio to start inside a user gesture.
     const wake = () => {
@@ -542,7 +543,15 @@ export class Game {
     if (this.input.consume('KeyH')) this.hud.toggleControls();
     if (this.input.consume('KeyM')) {
       this.audio.setMuted(!this.audio.muted);
-      this.hud.setMuted(this.audio.muted);
+      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    }
+    if (this.input.consume('Equal') || this.input.consume('NumpadAdd')) {
+      this.audio.changeVolume(1);
+      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
+    }
+    if (this.input.consume('Minus') || this.input.consume('NumpadSubtract')) {
+      this.audio.changeVolume(-1);
+      this.hud.setSound(this.audio.muted, this.audio.volumePercent);
     }
     if (this.input.consume('Escape')) this.state.togglePause();
     if (this.input.consume('KeyP')) this.togglePractice();

@@ -51,7 +51,7 @@ export class HUD {
       <div class="flags">
         <div class="flag" data-el="camFlag">Cam: Ball</div>
         <div class="flag" data-el="boostFlag">Infinite Boost: Off</div>
-        <div class="flag" data-el="soundFlag">Sound: On</div>
+        <div class="flag" data-el="soundFlag">Sound: 40%</div>
         <div class="flag" data-el="practiceFlag">Practice: Off</div>
       </div>
 
@@ -73,6 +73,7 @@ export class HUD {
           <dt>B</dt><dd>Infinite boost</dd>
           <dt>P</dt><dd>Practice mode (no bot)</dd>
           <dt>M / Esc / H</dt><dd>Mute &middot; pause &middot; hide this</dd>
+          <dt>+ / −</dt><dd>Game &amp; SFX volume</dd>
           <dt></dt><dd class="dim">Supersonic contact demolishes the slower car</dd>
         </dl>
       </div>
@@ -113,8 +114,8 @@ export class HUD {
 
   private toastTimer = 0;
 
-  setMuted(muted: boolean) {
-    this.el.soundFlag.textContent = `Sound: ${muted ? 'Off' : 'On'}`;
+  setSound(muted: boolean, volumePercent: number) {
+    this.el.soundFlag.textContent = muted ? `Sound: Off (${volumePercent}%)` : `Sound: ${volumePercent}%`;
     this.el.soundFlag.classList.toggle('off', muted);
   }
 

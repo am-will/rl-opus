@@ -4,7 +4,8 @@
  * first key press.
  */
 
-const MASTER_VOLUME = 0.4;
+const DEFAULT_VOLUME = 0.4;
+const VOLUME_STEP = 0.05;
 
 export class Audio {
   private ctx: AudioContext | null = null;
@@ -19,6 +20,8 @@ export class Audio {
   private tyreGain!: GainNode;
 
   muted = false;
+  /** Player-set mix level, independent of mute. Kept before the context starts. */
+  private volume = DEFAULT_VOLUME;
   private started = false;
 
   /** Safe to call repeatedly; only the first call inside a gesture matters. */
@@ -30,7 +33,7 @@ export class Audio {
     this.started = true;
 
     this.master = this.ctx.createGain();
-    this.master.gain.value = MASTER_VOLUME;
+    this.master.gain.value = this.volume;
     this.master.connect(this.ctx.destination);
 
     // Reusable white-noise buffer.
@@ -130,7 +133,20 @@ export class Audio {
 
   setMuted(m: boolean) {
     this.muted = m;
-    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : MASTER_VOLUME, this.ctx.currentTime, 0.05);
+    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : this.volume, this.ctx.currentTime, 0.05);
+  }
+
+  /** Change the whole game mix, including engine audio and one-shot SFX. */
+  changeVolume(direction: 1 | -1) {
+    this.volume = Math.min(1, Math.max(0, this.volume + direction * VOLUME_STEP));
+    if (this.ctx && !this.muted) {
+      this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.05);
+    }
+    return this.volume;
+  }
+
+  get volumePercent() {
+    return Math.round(this.volume * 100);
   }
 
   // -------------------------------------------------------------------------

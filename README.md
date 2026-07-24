@@ -22,9 +22,10 @@ npm run dev
 | `T` | Restart the match (respects practice mode) |
 | `P` | Practice mode — toggles the bot off and on |
 | `B` | Toggle infinite boost |
-| `M` | Mute (audio is at 40%) |
+| `M` | Toggle mute |
 | `Esc` | Pause |
 | `H` | Hide the controls panel |
+| `+` / `-` | Raise / lower game and SFX volume |
 
 **Demolitions.** Hit the other car while you're supersonic (2200 uu/s, 79 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump.
 
