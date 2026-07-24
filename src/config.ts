@@ -328,15 +328,74 @@ export const MATCH = {
   duration: 300, // 5:00
   countdown: 3,
   goalCelebration: 3.2,
+  /** Selectable match lengths, in minutes. */
+  lengths: [2, 5, 10],
 };
+
+/** Cars per team. 2v2 is you plus a bot against two bots. */
+export type MatchMode = '1v1' | '2v2';
+export const TEAM_SIZE: Record<MatchMode, number> = { '1v1': 1, '2v2': 2 };
+
+/** Bot difficulty presets — feeds Bot.skill (reaction time, aim error, boost use). */
+export const BOT_SKILLS: { id: string; label: string; skill: number }[] = [
+  { id: 'rookie', label: 'Rookie', skill: 0.3 },
+  { id: 'pro', label: 'Pro', skill: 0.5 },
+  { id: 'allstar', label: 'All-Star', skill: 0.78 },
+];
 
 export const TEAM = {
   blue: { primary: 0x33aaff, glow: 0x66ccff, dark: 0x0b3a6b, paint: 0x1c6fc4, name: 'BLUE' },
   orange: { primary: 0xff8a33, glow: 0xffb066, dark: 0x6b3208, paint: 0xd4641a, name: 'ORANGE' },
 };
 
-/** Kickoff spawn: [x, z, yawDegrees]. Blue attacks +z, orange attacks -z. */
-export const KICKOFF = {
-  blue: { x: 0, z: -uu(4608), yaw: 0 },
-  orange: { x: 0, z: uu(4608), yaw: Math.PI },
+// ---------------------------------------------------------------------------
+// Kickoff
+// ---------------------------------------------------------------------------
+
+export interface KickoffSpot {
+  /** Blue-side spawn. Orange is the point mirror of this. */
+  x: number;
+  z: number;
+  name: string;
+}
+
+/**
+ * (RL) The five kickoff spawns. Blue defends -z, so these are all negative z;
+ * orange mirrors through the centre spot, which is what keeps a kickoff fair —
+ * both cars are always the same distance from the ball.
+ */
+export const KICKOFF_SPOTS: KickoffSpot[] = [
+  { x: uu(-2048), z: uu(-2560), name: 'diagonal left' },
+  { x: uu(2048), z: uu(-2560), name: 'diagonal right' },
+  { x: uu(-256), z: uu(-3840), name: 'near left' },
+  { x: uu(256), z: uu(-3840), name: 'near right' },
+  { x: 0, z: uu(-4608), name: 'straight' },
+];
+
+/**
+ * Which spots a kickoff may use, by team size. Pairs are the RL 2v2 sets: one
+ * car takes the ball, the other holds a wing or the back post.
+ */
+export const KICKOFF_SETS: Record<number, number[][]> = {
+  1: [[0], [1], [2], [3], [4]],
+  2: [
+    [0, 3],
+    [1, 2],
+    [2, 1],
+    [3, 0],
+    [4, 0],
+    [4, 1],
+    [2, 3],
+  ],
 };
+
+/** Yaw that points a car spawned at (x, z) back at the ball on the centre spot. */
+export const faceBall = (x: number, z: number) => Math.atan2(-x, -z);
+
+/** Kickoff spawn for one team slot. Orange is the point mirror of blue. */
+export function kickoffSpawn(team: 'blue' | 'orange', spot: KickoffSpot) {
+  const s = team === 'blue' ? 1 : -1;
+  const x = spot.x * s;
+  const z = spot.z * s;
+  return { x, z, yaw: faceBall(x, z) };
+}
