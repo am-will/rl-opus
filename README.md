@@ -9,9 +9,12 @@ npm run dev
 
 ## Controls
 
+`Esc` opens the menu — match settings, audio, and full remapping for both the
+keyboard and a controller. Every binding below is a default, not a fixture.
+
 | Key | Action |
 | --- | --- |
-| `W` `A` `S` `D` / arrows | Drive and steer. In the air, `W`/`S` pitch and `A`/`D` yaw |
+| `W` `A` `S` `D` / arrows | Drive and steer. In the air, `W`/`S` pitch (throttle pitches the nose down) and `A`/`D` yaw |
 | `Space` | Jump. Tap twice for a directional flip (the direction you hold sets the flip) |
 | `Space` (upside down) | Hop off the surface — then air-roll yourself upright |
 | `Shift` | Boost |
@@ -20,14 +23,30 @@ npm run dev
 | `C` | Toggle ball cam / standard cam |
 | `R` | Reset your car |
 | `T` | Restart the match (respects practice mode) |
-| `P` | Practice mode — toggles the bot off and on |
+| `P` | Practice mode — empty pitch, no bots |
 | `B` | Toggle infinite boost |
 | `M` | Toggle mute |
-| `Esc` | Pause |
+| `Esc` | Menu · pause |
 | `H` | Hide the controls panel |
 | `+` / `-` | Raise / lower game and SFX volume |
 
-**Demolitions.** Hit the other car while you're supersonic (2200 uu/s, 79 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump.
+**Controller.** Any standard-mapping pad is picked up automatically, with
+Rocket League's layout: RT throttle, LT reverse, left stick steer, `A` jump,
+`B` boost, `X` powerslide, `Y` ball cam, LB/RB air roll, `Menu` for the menu.
+Triggers and stick are analogue. The menu itself is navigable with the D-pad.
+
+**Modes.** 1v1 against a bot, or 2v2 — you and a bot against two bots. The
+closest car on each side takes the ball while its teammate holds a supporting
+position. Bot skill is Rookie / Pro / All-Star.
+
+**Kickoffs** use the five Rocket League spawns — straight, near, and diagonal —
+picked at random and mirrored, so both sides always start the same distance from
+the ball.
+
+**Demolitions.** Hit an opponent while you're supersonic (2200 uu/s, 79 km/h) and the slower car explodes, then respawns at its own goal one second later. Below supersonic it's just a bump. Teammates can't demo each other.
+
+**Goals** detonate the ball: the blast throws every car near the net, the world
+drops into slow motion for a beat, and the stands set off pyro.
 
 ## Physics
 
@@ -68,18 +87,21 @@ src/
   game/                  BoostPads, Bot
   render/                ArenaMesh, CarMesh, Effects, ChaseCamera, Textures
   audio/Audio.ts         synthesised — no audio files
-  ui/                    HUD + styles
-  core/                  Game loop, GameState, Input
+  ui/                    HUD, Menu + styles
+  core/                  Game loop, GameState, Input, Bindings, Settings
+docs/MULTIPLAYER.md      plan for two-player online
 ```
 
 Physics runs at a fixed 120 Hz with an accumulator. All art is generated at runtime (canvas textures, procedural car mesh, synthesised audio) — there are no asset files.
 
 ## Opponent
 
-The orange bot chases a predicted contact point, swings wide when it's on the wrong side of the ball, retreats to defend, grabs big pads when low, and boosts in bursts. Reaction delay and aim jitter scale with `bot.skill` (default `0.5`). Raise it from the console:
+Bots chase a predicted contact point, swing wide when they're on the wrong side of the ball, retreat to defend, grab big pads when low, and boost in bursts. Knocked onto their roof, they hop and air-roll themselves upright — the same recovery the player has, no teleporting. In 2v2 the car furthest from the ball drops into a support position on the far wing instead of double-committing.
+
+Reaction delay and aim jitter scale with `skill` (Rookie 0.3 / Pro 0.5 / All-Star 0.78, set in the menu). From the console:
 
 ```js
-game.bot.skill = 0.75
+game.racers.filter(r => r.bot).forEach(r => (r.bot.skill = 0.9))
 ```
 
 `game` is exposed on `window` for tuning.
