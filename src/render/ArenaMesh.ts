@@ -20,6 +20,7 @@ import {
 } from './Textures';
 
 const { stations, spans } = buildStations();
+const WHITE = new THREE.Color(0xffffff);
 
 /** Cumulative outline distance at each station, so wall UVs run continuously. */
 function cumulativeDistances(st: Station[]) {
@@ -127,6 +128,8 @@ export interface GoalVisual {
   field: THREE.Mesh;
   light: THREE.PointLight;
   frame: THREE.Group;
+  frameMat: THREE.MeshBasicMaterial;
+  netMat: THREE.MeshStandardMaterial;
 }
 
 export class ArenaMesh {
@@ -268,11 +271,14 @@ export class ArenaMesh {
     // UVs already repeat once per `uScale` metres of perimeter — no extra tiling.
     const crowd = makeCrowdTexture();
 
-    // Three tiers stepping up and back behind the glass.
+    // Three tiers stepping up and back behind the glass. The first tier has to
+    // clear the goals: the nets stick out `goal.depth` past the back wall, and
+    // anything closer than that puts the crowd inside the net.
+    const clearance = ARENA.goal.depth + 1.5;
     const tiers: [number, number, number][] = [
-      [4.5, 3.0, 11.5],
-      [12.0, 10.5, 20.5],
-      [20.0, 18.0, 29.0],
+      [clearance, 3.0, 12.0],
+      [clearance + 7.5, 10.5, 21.0],
+      [clearance + 15.5, 18.0, 29.5],
     ];
     for (const [out, y0, y1] of tiers) {
       const rows: ProfilePoint[] = [
@@ -289,7 +295,7 @@ export class ArenaMesh {
       { inward: 0, height: 34, nInward: 1, nUp: 0 },
     ];
     const shellMat = new THREE.MeshBasicMaterial({ color: 0x04060b, side: THREE.DoubleSide });
-    this.group.add(new THREE.Mesh(arenaLoft(shellRows, { outward: 26, uScale: 40 }), shellMat));
+    this.group.add(new THREE.Mesh(arenaLoft(shellRows, { outward: clearance + 22, uScale: 40 }), shellMat));
 
     // Floodlight banks ringing the top.
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xeaf4ff });
@@ -298,7 +304,7 @@ export class ArenaMesh {
       const nx = st.nx;
       const nz = st.nz;
       const bank = new THREE.Mesh(new THREE.BoxGeometry(7, 1.1, 0.6), lampMat);
-      bank.position.set(st.x - nx * 16, 30, st.z - nz * 16);
+      bank.position.set(st.x - nx * (clearance + 7), 30, st.z - nz * (clearance + 7));
       bank.lookAt(0, 12, 0);
       this.group.add(bank);
     }
@@ -331,7 +337,8 @@ export class ArenaMesh {
       // Net interior, lofted with rounded floor and roof so it matches the
       // drivable collision surface exactly.
       const gs = goalStations(side);
-      const netGeo = buildLoft(GOAL_PROFILE, gs.stations, gs.spans, cumulativeDistances(gs.stations), {
+      const gsDist = cumulativeDistances(gs.stations);
+      const netGeo = buildLoft(GOAL_PROFILE, gs.stations, gs.spans, gsDist, {
         uScale: 4.5,
         vDivisor: g.height,
       });
@@ -339,7 +346,27 @@ export class ArenaMesh {
       netMesh.receiveShadow = true;
       grp.add(netMesh);
 
-      // Flat roof panel between the four ceiling curves.
+      // Solid shell a hand's width behind the net. The net is translucent, so
+      // without this you look straight through it at the stands and the sky.
+      const backingMat = new THREE.MeshStandardMaterial({
+        color: 0x090d15,
+        roughness: 0.95,
+        metalness: 0.05,
+        emissive: team.dark,
+        emissiveIntensity: 0.35,
+        side: THREE.DoubleSide,
+      });
+      const backing = new THREE.Mesh(
+        buildLoft(GOAL_PROFILE, gs.stations, gs.spans, gsDist, {
+          uScale: 4.5,
+          vDivisor: g.height,
+          outward: 0.22,
+        }),
+        backingMat,
+      );
+      grp.add(backing);
+
+      // Flat roof panel between the four ceiling curves, and its backing.
       const top = new THREE.Mesh(
         new THREE.PlaneGeometry(g.halfWidth * 2 - g.filletRadius * 2, g.depth - g.filletRadius * 2),
         netMat,
@@ -347,6 +374,14 @@ export class ArenaMesh {
       top.position.set(0, g.height, side * (ARENA.halfLength + g.depth / 2));
       top.rotation.x = Math.PI / 2;
       grp.add(top);
+
+      const topBacking = new THREE.Mesh(
+        new THREE.PlaneGeometry(g.halfWidth * 2, g.depth),
+        backingMat,
+      );
+      topBacking.position.set(0, g.height + 0.22, side * (ARENA.halfLength + g.depth / 2));
+      topBacking.rotation.x = Math.PI / 2;
+      grp.add(topBacking);
 
       // Glowing frame around the mouth.
       const frameMat = new THREE.MeshBasicMaterial({ color: team.glow });
@@ -384,20 +419,29 @@ export class ArenaMesh {
       grp.add(light);
 
       this.group.add(grp);
-      this.goals.push({ team: teamName, field, light, frame });
+      this.goals.push({ team: teamName, field, light, frame, frameMat, netMat });
     }
   }
 
-  /** Pulse the goal curtain when a goal is scored. */
-  flashGoal(team: 'blue' | 'orange', t: number) {
+  /**
+   * Celebration on the goal that was scored in. `blast` 0..1 rides the
+   * explosion: the frame flares to white and the net lights up from inside.
+   */
+  flashGoal(team: 'blue' | 'orange', t: number, blast = 0) {
+    const pulse = Math.abs(Math.sin(t * 14));
     for (const goal of this.goals) {
       const mat = goal.field.material as THREE.MeshBasicMaterial;
+      const glow = TEAM[goal.team].glow;
       if (goal.team === team) {
-        mat.opacity = 0.13 + Math.abs(Math.sin(t * 14)) * 0.34;
-        goal.light.intensity = 60 + Math.abs(Math.sin(t * 14)) * 150;
+        mat.opacity = 0.13 + pulse * 0.34 + blast * 0.35;
+        goal.light.intensity = 60 + pulse * 150 + blast * 900;
+        goal.frameMat.color.setHex(glow).lerp(WHITE, Math.min(1, blast * 1.4));
+        goal.netMat.emissiveIntensity = 0.25 + pulse * 0.5 + blast * 2.4;
       } else {
         mat.opacity = 0.13;
         goal.light.intensity = 60;
+        goal.frameMat.color.setHex(glow);
+        goal.netMat.emissiveIntensity = 0.25;
       }
     }
   }
@@ -406,6 +450,8 @@ export class ArenaMesh {
     for (const goal of this.goals) {
       (goal.field.material as THREE.MeshBasicMaterial).opacity = 0.13;
       goal.light.intensity = 60;
+      goal.frameMat.color.setHex(TEAM[goal.team].glow);
+      goal.netMat.emissiveIntensity = 0.25;
     }
   }
 }
