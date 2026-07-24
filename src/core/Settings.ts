@@ -10,6 +10,12 @@ import {
 
 const STORAGE_KEY = 'rocket-arena.settings.v1';
 
+/**
+ * The deployed room worker (see server/). Overridable per browser from the menu
+ * or at build time with VITE_ROOM_SERVER, so a fork can point somewhere else.
+ */
+const DEFAULT_ROOM_SERVER = 'rocket-arena-rooms.opus-league.workers.dev';
+
 export interface Settings {
   mode: MatchMode;
   practice: boolean;
@@ -39,7 +45,7 @@ export function defaultSettings(): Settings {
     infiniteBoost: false,
     volume: 0.4,
     muted: false,
-    roomServer: (import.meta.env?.VITE_ROOM_SERVER as string | undefined) ?? '',
+    roomServer: (import.meta.env?.VITE_ROOM_SERVER as string | undefined) ?? DEFAULT_ROOM_SERVER,
     roomCode: '',
     keys: defaultKeyMap(),
     pad: defaultPadMap(),

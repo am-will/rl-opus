@@ -7,18 +7,33 @@ The game itself stays on Vercel — it's a static bundle. Vercel can't hold a
 WebSocket open for five minutes (functions are request-scoped), so the realtime
 part is a separate ~120-line Cloudflare Worker in [`server/`](../server).
 
-## Deploying the room server
+## The room server
 
-Once, from `server/`:
+Already deployed and wired in as the default:
 
-```bash
-cd server && npm install && npx wrangler login && npx wrangler deploy
+```
+rocket-arena-rooms.opus-league.workers.dev
 ```
 
-Wrangler prints a URL like `rocket-arena-rooms.<your-subdomain>.workers.dev`.
-Paste that into **Esc → Online → Server** and it's saved in your browser. To bake
-it into the build instead, set `VITE_ROOM_SERVER` in the Vercel project's
-environment variables and redeploy.
+Redeploy it after changing `server/src/index.ts`:
+
+```bash
+cd server && npx wrangler deploy
+```
+
+To point a fork somewhere else, either change `DEFAULT_ROOM_SERVER` in
+`src/core/Settings.ts`, set `VITE_ROOM_SERVER` in the Vercel project's
+environment variables, or just type a different host into **Esc → Online →
+Server** (that choice is saved per browser).
+
+A first deploy to a brand-new `*.workers.dev` subdomain takes a few minutes to
+get its TLS certificate — until then connections fail with a handshake error
+even though DNS already resolves.
+
+> The server URL is public in this repo, and the room server has no auth. Rooms
+> hold two people and only exist while someone is in them, so the worst case is
+> a stranger burning free-tier requests. If that ever happens, add an `Origin`
+> check to the Worker's `fetch`.
 
 To run it locally while developing:
 

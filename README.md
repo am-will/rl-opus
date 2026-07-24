@@ -55,14 +55,10 @@ joins with it. The room creator's browser runs the match; the other player's car
 is simulated locally and corrected toward the host, so steering stays instant.
 
 The realtime part is a small Cloudflare Worker in [`server/`](server) — Vercel
-serves the game but can't hold a WebSocket open for a match. Deploy it once:
-
-```bash
-cd server && npm install && npx wrangler login && npx wrangler deploy
-```
-
-then paste the printed `*.workers.dev` URL into the menu's **Server** field. It
-runs inside the Workers free tier — about 130 matches a day. Full write-up in
+serves the game but can't hold a WebSocket open for a match. It's already
+deployed at `rocket-arena-rooms.opus-league.workers.dev` and set as the default,
+so there's nothing to configure; redeploy with `cd server && npx wrangler deploy`.
+It runs inside the Workers free tier — about 130 matches a day. Full write-up in
 [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 ## Physics
