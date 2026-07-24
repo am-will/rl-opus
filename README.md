@@ -48,6 +48,23 @@ the ball.
 **Goals** detonate the ball: the blast throws every car near the net, the world
 drops into slow motion for a beat, and the stands set off pyro.
 
+## Online 1v1
+
+`Esc → Online`. One player creates a room and reads the code out, the other
+joins with it. The room creator's browser runs the match; the other player's car
+is simulated locally and corrected toward the host, so steering stays instant.
+
+The realtime part is a small Cloudflare Worker in [`server/`](server) — Vercel
+serves the game but can't hold a WebSocket open for a match. Deploy it once:
+
+```bash
+cd server && npm install && npx wrangler login && npx wrangler deploy
+```
+
+then paste the printed `*.workers.dev` URL into the menu's **Server** field. It
+runs inside the Workers free tier — about 130 matches a day. Full write-up in
+[docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+
 ## Physics
 
 Constants come from the Rocket League community's reverse-engineering work, converted at 1 uu = 1 cm. Verified in-engine:

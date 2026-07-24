@@ -13,12 +13,15 @@ import {
 } from '../core/Bindings';
 import type { Input } from '../core/Input';
 import type { Settings } from '../core/Settings';
+import { makeRoomCode } from '../net/Connection';
+import type { OnlineSession } from '../net/OnlineSession';
 
-type Tab = 'match' | 'audio' | 'keyboard' | 'controller';
+type Tab = 'match' | 'online' | 'audio' | 'keyboard' | 'controller';
 
 export interface MenuHooks {
   settings: Settings;
   input: Input;
+  online: OnlineSession;
   /** Push the current settings into the running game and persist them. */
   apply(): void;
   restartMatch(): void;
@@ -28,6 +31,7 @@ export interface MenuHooks {
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'match', label: 'Match' },
+  { id: 'online', label: 'Online' },
   { id: 'audio', label: 'Audio' },
   { id: 'keyboard', label: 'Keyboard' },
   { id: 'controller', label: 'Controller' },
@@ -176,6 +180,9 @@ export class Menu {
       case 'match':
         this.renderMatch();
         break;
+      case 'online':
+        this.renderOnline();
+        break;
       case 'audio':
         this.renderAudio();
         break;
@@ -215,6 +222,11 @@ export class Menu {
     h.className = 'menu-section';
     h.textContent = title;
     this.body.appendChild(h);
+  }
+
+  /** Re-render in place when something outside the menu changed, e.g. a peer joining. */
+  refreshIfOpen() {
+    if (this.open && !this.hooks.input.capturing) this.render();
   }
 
   private button(parent: HTMLElement, text: string, onClick: () => void, cls = '') {
@@ -331,6 +343,108 @@ export class Menu {
       this.hooks.restartMatch();
       this.hooks.close();
     });
+  }
+
+  /**
+   * Online 1v1 over a shared room code. Whoever creates the room is the host
+   * and runs the match; the other player joins with the same code.
+   */
+  private renderOnline() {
+    const s = this.hooks.settings;
+    const net = this.hooks.online;
+
+    const status = document.createElement('div');
+    status.className = 'menu-status';
+    const live = net.status === 'connected';
+    status.textContent =
+      net.detail ||
+      (net.status === 'offline' ? 'Not connected' : net.status);
+    status.classList.toggle('warn', net.status === 'error');
+    status.classList.toggle('good', live || net.status === 'waiting');
+    this.body.appendChild(status);
+
+    if (live) {
+      const info = document.createElement('div');
+      info.className = 'menu-status';
+      info.textContent = `You are ${net.isHost ? 'the host — blue' : 'the guest — orange'} · ping ${net.ping} ms`;
+      this.body.appendChild(info);
+    }
+
+    this.section('Room');
+
+    this.rowCounter++;
+    const serverCell = this.row('Server', 'Your deployed room worker');
+    const server = document.createElement('input');
+    server.type = 'text';
+    server.className = 'menu-input wide';
+    server.spellcheck = false;
+    server.placeholder = 'rocket-arena-rooms.you.workers.dev';
+    server.value = s.roomServer;
+    server.addEventListener('change', () => {
+      s.roomServer = server.value.trim();
+      this.hooks.apply();
+    });
+    serverCell.appendChild(server);
+    this.focusables.push({ el: server, row: this.rowCounter });
+
+    this.rowCounter++;
+    const codeCell = this.row('Room code', 'Share this with your friend');
+    const code = document.createElement('input');
+    code.type = 'text';
+    code.className = 'menu-input';
+    code.spellcheck = false;
+    code.maxLength = 12;
+    code.placeholder = 'ABC-123';
+    // Once we're in a room, show the code we're actually in.
+    code.value = net.connection.code || s.roomCode;
+    code.disabled = net.status !== 'offline' && net.status !== 'error';
+    server.disabled = code.disabled;
+    code.addEventListener('input', () => {
+      code.value = code.value.toUpperCase();
+      s.roomCode = code.value;
+    });
+    codeCell.appendChild(code);
+    this.focusables.push({ el: code, row: this.rowCounter });
+    this.button(codeCell, 'New code', () => {
+      s.roomCode = makeRoomCode();
+      this.hooks.tick(true);
+      this.hooks.apply();
+      this.render();
+    });
+
+    this.rowCounter++;
+    const actions = this.row('Connect', s.roomServer ? undefined : 'Deploy the server first — see docs/MULTIPLAYER.md');
+    if (net.status === 'offline' || net.status === 'error') {
+      const canConnect = !!s.roomServer;
+      const create = this.button(actions, 'Create room', () => {
+        if (!s.roomCode) s.roomCode = makeRoomCode();
+        this.hooks.apply();
+        net.host(s.roomServer, s.roomCode);
+        this.hooks.tick(true);
+        this.render();
+      }, 'primary');
+      const join = this.button(actions, 'Join room', () => {
+        if (!s.roomCode) return;
+        this.hooks.apply();
+        net.join(s.roomServer, s.roomCode);
+        this.hooks.tick(true);
+        this.render();
+      });
+      create.disabled = !canConnect;
+      join.disabled = !canConnect || !s.roomCode;
+    } else {
+      this.button(actions, 'Leave', () => {
+        net.leave();
+        this.hooks.tick();
+        this.render();
+      });
+    }
+
+    const note = document.createElement('div');
+    note.className = 'menu-note';
+    note.textContent =
+      'One of you creates the room, the other joins with the same code. The host runs the match, so bots, practice and infinite boost are off while you are connected.';
+    this.body.appendChild(note);
   }
 
   private renderAudio() {

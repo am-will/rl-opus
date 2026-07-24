@@ -51,6 +51,7 @@ export class HUD {
       <div class="center" data-el="center"></div>
 
       <div class="flags">
+        <div class="flag hidden" data-el="onlineFlag">Online</div>
         <div class="flag" data-el="modeFlag">Mode: 1v1</div>
         <div class="flag" data-el="camFlag">Cam: Ball</div>
         <div class="flag" data-el="boostFlag">Infinite Boost: Off</div>
@@ -90,6 +91,13 @@ export class HUD {
 
   setMode(mode: string) {
     this.el.modeFlag.textContent = `Mode: ${mode}`;
+  }
+
+  /** `role` is null when offline, otherwise 'Host' or 'Guest'. */
+  setOnline(role: string | null) {
+    this.el.onlineFlag.classList.toggle('hidden', !role);
+    this.el.onlineFlag.classList.toggle('on', !!role);
+    if (role) this.el.onlineFlag.textContent = `Online: ${role}`;
   }
 
   /** Rebuilt from the live bindings, so a rebind shows up here immediately. */

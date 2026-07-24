@@ -34,6 +34,8 @@ import { Menu } from '../ui/Menu';
 import { Audio } from '../audio/Audio';
 import { keyLabel, type ActionId } from './Bindings';
 import { loadSettings, saveSettings, type Settings } from './Settings';
+import { OnlineSession } from '../net/OnlineSession';
+import { EVENT } from '../net/Protocol';
 
 const _v = new THREE.Vector3();
 const _n = new THREE.Vector3();
@@ -85,6 +87,11 @@ export class Game {
 
   settings: Settings = loadSettings();
 
+  /** Online 1v1. Idle until a room is joined. */
+  online!: OnlineSession;
+  /** Which racer the local player drives — slot 0 hosting, slot 2 as the guest. */
+  localIndex = 0;
+
   private prevBallVel = new THREE.Vector3();
   private lastCountdown = 99;
   private accumulator = 0;
@@ -112,11 +119,21 @@ export class Game {
   }
 
   get player(): Racer {
-    return this.racers[0];
+    return this.racers[this.localIndex];
   }
 
   get playerCar(): Car {
-    return this.racers[0].car;
+    return this.player.car;
+  }
+
+  /** The two cars an online match uses: host is blue slot 0, guest orange slot 0. */
+  get netRacers(): [Racer, Racer] {
+    return [this.racers[0], this.racers[2]];
+  }
+
+  /** In an online match — bots off, host owns the score and the clock. */
+  get onlineEngaged() {
+    return this.online?.engaged ?? false;
   }
 
   /** No bots on the pitch — free play. */
@@ -206,9 +223,11 @@ export class Game {
     // --- Shell ---------------------------------------------------------------
     this.hud = new HUD(hudParent);
     this.input = new Input();
+    this.online = new OnlineSession(this, () => this.onOnlineChanged());
     this.menu = new Menu(hudParent, {
       settings: this.settings,
       input: this.input,
+      online: this.online,
       apply: () => this.applySettings(),
       restartMatch: () => this.restartMatch(),
       close: () => this.setMenuOpen(false),
@@ -251,18 +270,29 @@ export class Game {
     this.audio.setVolume(s.volume);
     this.audio.setMuted(s.muted);
     this.chase.setMode(s.camera);
-    this.playerCar.infiniteBoost = s.infiniteBoost;
     this.state.duration = s.matchMinutes * 60;
     for (const r of this.racers) if (r.bot) r.bot.skill = s.botSkill;
 
-    const structural = s.mode !== this.appliedMode || s.matchMinutes !== this.appliedMinutes;
+    const online = this.onlineEngaged;
+    // Infinite boost is a practice toy; it has no business in a real match.
+    for (const r of this.racers) r.car.infiniteBoost = false;
+    this.playerCar.infiniteBoost = s.infiniteBoost && !online;
+
+    const structural =
+      !online && (s.mode !== this.appliedMode || s.matchMinutes !== this.appliedMinutes);
     const first = this.appliedMode === '';
     this.appliedMode = s.mode;
     this.appliedMinutes = s.matchMinutes;
 
-    const size = TEAM_SIZE[s.mode];
-    for (const r of this.racers) {
-      r.enrolled = r === this.player || (r.slot < size && !s.practice);
+    if (online) {
+      // Online is strictly 1v1: the two slot-0 cars, no bots, no practice.
+      const [host, guest] = this.netRacers;
+      for (const r of this.racers) r.enrolled = r === host || r === guest;
+    } else {
+      const size = TEAM_SIZE[s.mode];
+      for (const r of this.racers) {
+        r.enrolled = r === this.player || (r.slot < size && !s.practice);
+      }
     }
 
     if (structural && !first) this.restartMatch();
@@ -361,11 +391,15 @@ export class Game {
       }
       if (steps === MAX_SUBSTEPS) this.accumulator = 0; // don't spiral after a stall
 
-      const event = this.state.update(dt);
-      if (event === 'kickoff') this.kickoff();
-      if (event === 'go') {
-        this.chase.snap(this.playerCar, this.ball);
-        this.audio.whistle();
+      // The clock, the score and the kickoffs belong to the host; a guest just
+      // renders what it is told.
+      if (!this.online.isGuest) {
+        const event = this.state.update(dt);
+        if (event === 'kickoff') this.kickoff();
+        if (event === 'go') {
+          this.chase.snap(this.playerCar, this.ball);
+          this.audio.whistle();
+        }
       }
 
       if (this.state.phase === 'countdown') {
@@ -388,6 +422,7 @@ export class Game {
       pc.input.drift,
     );
 
+    this.online.update(realDt);
     this.updateVisuals(dt);
     this.hud.update(this.state, this.menu.open);
     this.hud.updateFast(pc.boost, pc.infiniteBoost, pc.speed, pc.supersonic);
@@ -400,18 +435,27 @@ export class Game {
 
   private fixedStep(dt: number, live: boolean) {
     const roster = this.racers.filter((r) => r.enrolled);
+    const online = this.onlineEngaged;
 
     if (live) {
       this.input.readCarInput(this.playerCar.input);
-      this.roleTimer -= dt;
-      if (this.roleTimer <= 0) {
-        this.roleTimer = 0.25; // re-deciding every step makes the bots dither
-        this.assignRoles();
-      }
-      for (const r of roster) {
-        if (!r.bot || !r.car.active) continue;
-        r.bot.update(dt, this.ball, this.pads, r.botInput);
-        Object.assign(r.car.input, r.botInput);
+      if (online) {
+        // The other car is driven by the packets, not by a bot. The guest gets
+        // the host's input inside each snapshot, so both sides extrapolate the
+        // same way between them.
+        const remote = this.netRacers[this.localIndex === 0 ? 1 : 0];
+        if (this.online.isHost) Object.assign(remote.car.input, this.online.remoteInput);
+      } else {
+        this.roleTimer -= dt;
+        if (this.roleTimer <= 0) {
+          this.roleTimer = 0.25; // re-deciding every step makes the bots dither
+          this.assignRoles();
+        }
+        for (const r of roster) {
+          if (!r.bot || !r.car.active) continue;
+          r.bot.update(dt, this.ball, this.pads, r.botInput);
+          Object.assign(r.car.input, r.botInput);
+        }
       }
     } else {
       for (const r of this.racers) Object.assign(r.car.input, emptyInput());
@@ -449,14 +493,18 @@ export class Game {
       if (car.landedHard > 0.35 && car.grounded) this.audio.land(car.landedHard);
     }
 
-    this.pads.update(dt, roster.map((r) => r.car).filter((c) => c.active));
-    for (const e of this.pads.events) {
-      this.onPadPickup(e.pad.position, e.pad.big);
-      this.audio.pad(e.pad.big);
-    }
+    // Pads, demolitions and goals are all decided by the host; the guest gets
+    // them as authoritative state and events.
+    if (!this.online.isGuest) {
+      this.pads.update(dt, roster.map((r) => r.car).filter((c) => c.active));
+      for (const e of this.pads.events) {
+        this.onPadPickup(e.pad.position, e.pad.big);
+        this.audio.pad(e.pad.big);
+      }
 
-    this.updateDemolitions();
-    if (live) this.checkGoal();
+      this.updateDemolitions();
+      if (live) this.checkGoal();
+    }
   }
 
   /** Closest car on each side takes the ball; the rest hold a support position. */
@@ -518,11 +566,16 @@ export class Game {
 
   private demolish(victim: Racer) {
     const pos = victim.car.position.clone();
-    const colour = victim.team === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
-
     victim.car.setActive(false);
     victim.car.wrecked = true;
     victim.car.demoTimer = DEMO.respawnDelay;
+    this.online.sendEvent(EVENT.demolition, Math.max(0, this.netRacers.indexOf(victim)), pos);
+    this.demolitionFx(victim, pos);
+  }
+
+  /** The visible half of a demolition — also what a guest plays on the event. */
+  private demolitionFx(victim: Racer, pos: THREE.Vector3) {
+    const colour = victim.team === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
     victim.mesh.setVisible(false);
     victim.trail.teleport(pos);
 
@@ -583,7 +636,51 @@ export class Game {
     // Blue attacks +z, so the ball is sitting in orange's net.
     this.goalTeam = scorer === 'blue' ? 'orange' : 'blue';
     this.goalFlashTimer = MATCH.goalCelebration;
-    this.explodeGoal(scorer);
+    const at = this.ball.position.clone();
+    this.online.sendEvent(EVENT.goal, scorer === 'blue' ? 0 : 1, at);
+    this.explodeGoal(scorer, at);
+  }
+
+  // --- Network callbacks (guest side) ---------------------------------------
+
+  /** The host scored it; play the same celebration locally. */
+  onNetGoal(scorer: 'blue' | 'orange', at: THREE.Vector3) {
+    this.goalTeam = scorer === 'blue' ? 'orange' : 'blue';
+    this.goalFlashTimer = MATCH.goalCelebration;
+    this.explodeGoal(scorer, at);
+  }
+
+  onNetKickoff() {
+    this.ballMesh.reset(this.ball.position);
+    this.arena.resetGoals();
+    this.bloom.strength = 0.5;
+    this.goalFlashTimer = 0;
+    this.blast = 0;
+    this.blastLight.intensity = 0;
+    this.timeScale = 1;
+    this.fx.length = 0;
+    for (const r of this.racers) r.trail.teleport(r.car.position);
+    this.chase.snap(this.playerCar, this.ball);
+    this.audio.whistle();
+  }
+
+  onNetDemolition(index: number, at: THREE.Vector3) {
+    const racer = this.netRacers[index] ?? this.netRacers[0];
+    this.demolitionFx(racer, at);
+  }
+
+  onNetPadPickup(position: THREE.Vector3, big: boolean) {
+    this.onPadPickup(position, big);
+    this.audio.pad(big);
+  }
+
+  /** Roster, camera and HUD after connecting, disconnecting or changing role. */
+  onOnlineChanged() {
+    this.localIndex = this.online.role === 'guest' ? 2 : 0;
+    this.applySettings({ silent: true });
+    this.chase.snap(this.playerCar, this.ball);
+    this.menu.refreshIfOpen();
+    this.hud.setOnline(this.online.engaged ? (this.online.isHost ? 'Host' : 'Guest') : null);
   }
 
   private queueFx(delay: number, run: () => void) {
@@ -604,12 +701,12 @@ export class Game {
    * The ball detonates where it crossed the line: white core, shockwave through
    * the goal mouth, debris raining into the net, then pyro in the stands.
    */
-  private explodeGoal(scorer: 'blue' | 'orange') {
+  private explodeGoal(scorer: 'blue' | 'orange', where: THREE.Vector3) {
     const dir = scorer === 'blue' ? 1 : -1;
     const colour = scorer === 'blue' ? TEAM_COLOR.blue : TEAM_COLOR.orange;
     const glow = scorer === 'blue' ? TEAM.blue.glow : TEAM.orange.glow;
 
-    const at = this.ball.position.clone();
+    const at = where.clone();
     at.y = Math.max(1.4, at.y);
     this.ballMesh.setVisible(false);
 
@@ -896,13 +993,16 @@ export class Game {
 
   private setMenuOpen(open: boolean) {
     if (open === this.menu.open) return;
+    // Online, the match keeps running while you're in the menu — one player
+    // can't freeze the other's game.
+    const canPause = !this.onlineEngaged;
     if (open) {
       this.menu.show();
-      this.state.setPaused(true);
+      if (canPause) this.state.setPaused(true);
     } else {
       this.menu.hide();
       this.input.clearHeld();
-      this.state.setPaused(false);
+      if (canPause) this.state.setPaused(false);
     }
     this.state.revision++;
   }
@@ -933,15 +1033,17 @@ export class Game {
       this.settings.volume = this.audio.changeVolume(-1);
       this.applySettings();
     }
-    if (this.input.consume('practice')) this.togglePractice();
-    if (this.input.consume('resetCar')) this.resetPlayer();
+    // Practice, car resets and restarts are the host's to give — a guest doing
+    // any of them locally would just be corrected on the next snapshot.
+    if (this.input.consume('practice') && !this.onlineEngaged) this.togglePractice();
+    if (this.input.consume('resetCar') && !this.online.isGuest) this.resetPlayer();
     // Restarts the whole match. kickoff() honours the roster, so practice mode
     // and the current team size stay as they were.
     if (
       this.input.consume('restartMatch') ||
       (this.state.phase === 'ended' && (this.input.consumeKey('Enter') || this.input.consumeNav('accept')))
     ) {
-      this.restartMatch();
+      if (!this.online.isGuest) this.restartMatch();
     }
   }
 
@@ -991,6 +1093,7 @@ export class Game {
       r.bot?.reset();
     }
 
+    this.online.sendEvent(EVENT.kickoff, 0, _v.set(0, 0, 0));
     this.ball.reset(new THREE.Vector3(0, BALL.radius + 0.02, 0));
     this.ballMesh.reset(this.ball.position);
     this.pads.reset();

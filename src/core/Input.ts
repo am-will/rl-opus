@@ -90,6 +90,13 @@ export class Input {
   private onKey(e: KeyboardEvent, isDown: boolean) {
     const code = e.code;
 
+    // Typing a room code shouldn't also drive the car.
+    const target = e.target as HTMLElement | null;
+    if (!this.keyCapture && target && (target.tagName === 'INPUT' || target.isContentEditable)) {
+      if (isDown && code === 'Escape') (target as HTMLInputElement).blur();
+      return;
+    }
+
     if (this.keyCapture) {
       e.preventDefault();
       if (isDown) {

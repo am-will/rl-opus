@@ -690,6 +690,54 @@ body {
   color: #ffd79a;
 }
 
+.menu-status.good {
+  border-left-color: #5dffb0;
+  color: #a8ffd6;
+}
+
+.menu-note {
+  margin-top: 16px;
+  font-size: 9.5px;
+  letter-spacing: 1.6px;
+  line-height: 1.9;
+  opacity: 0.42;
+  text-transform: none;
+  max-width: 60ch;
+}
+
+.menu-input {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(160, 200, 240, 0.25);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  width: 132px;
+}
+
+.menu-input.wide {
+  width: 320px;
+  letter-spacing: 1px;
+  text-transform: none;
+}
+
+.menu-input:focus-visible {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 1px var(--blue), 0 0 18px rgba(60, 170, 255, 0.45);
+}
+
+.menu-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.flag.hidden {
+  display: none;
+}
+
 .menu-panel footer {
   display: flex;
   align-items: center;

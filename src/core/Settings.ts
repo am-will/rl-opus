@@ -21,6 +21,10 @@ export interface Settings {
   /** 0..1 master mix. */
   volume: number;
   muted: boolean;
+  /** Room server origin, e.g. rocket-arena-rooms.you.workers.dev. */
+  roomServer: string;
+  /** Last room code used, so a rematch is one click. */
+  roomCode: string;
   keys: KeyMap;
   pad: PadMap;
 }
@@ -35,6 +39,8 @@ export function defaultSettings(): Settings {
     infiniteBoost: false,
     volume: 0.4,
     muted: false,
+    roomServer: (import.meta.env?.VITE_ROOM_SERVER as string | undefined) ?? '',
+    roomCode: '',
     keys: defaultKeyMap(),
     pad: defaultPadMap(),
   };
@@ -58,6 +64,8 @@ export function loadSettings(): Settings {
       infiniteBoost: !!saved.infiniteBoost,
       volume: clamp01(num(saved.volume, base.volume)),
       muted: !!saved.muted,
+      roomServer: typeof saved.roomServer === 'string' && saved.roomServer ? saved.roomServer : base.roomServer,
+      roomCode: typeof saved.roomCode === 'string' ? saved.roomCode.slice(0, 12) : '',
       keys: mergeKeyMap(saved.keys),
       pad: mergePadMap(saved.pad),
     };

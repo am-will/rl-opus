@@ -1,171 +1,139 @@
-# Two-player online — plan
+# Two-player online
 
-Where the game runs today: the Vite build is a static bundle deployed to Vercel
-(`rl-opus5`). Everything — physics, bots, rendering — happens in one browser tab.
+Online 1v1 over a shared room code. One player creates a room, the other joins
+with the same code, and the creator's browser runs the match.
 
-## The short version
+The game itself stays on Vercel — it's a static bundle. Vercel can't hold a
+WebSocket open for five minutes (functions are request-scoped), so the realtime
+part is a separate ~120-line Cloudflare Worker in [`server/`](../server).
 
-**Vercel can't host the match itself.** Vercel serves static files and runs
-serverless functions that live for the length of one HTTP request. A realtime
-match needs a connection that stays open for five minutes, which means either a
-second, always-on service, or a direct browser-to-browser connection.
+## Deploying the room server
 
-The recommendation, in order of what I'd build:
+Once, from `server/`:
 
-1. **Netcode model:** host-authoritative. One player's browser is the authority
-   and runs the only real simulation; the other sends inputs and renders what it
-   is told, with local prediction on its own car. No lockstep — see below.
-2. **Transport:** WebRTC DataChannel (unreliable/unordered) browser-to-browser,
-   so match traffic never touches a server and latency is as low as the two
-   connections allow.
-3. **Signalling + fallback relay:** a Cloudflare Worker with a Durable Object.
-   It hands out room codes, passes the WebRTC handshake between the two peers,
-   and relays the match over WebSocket if the direct connection fails.
+```bash
+cd server && npm install && npx wrangler login && npx wrangler deploy
+```
 
-Vercel keeps serving the game itself. The Worker is a separate ~150-line deploy.
+Wrangler prints a URL like `rocket-arena-rooms.<your-subdomain>.workers.dev`.
+Paste that into **Esc → Online → Server** and it's saved in your browser. To bake
+it into the build instead, set `VITE_ROOM_SERVER` in the Vercel project's
+environment variables and redeploy.
 
-## Why not lockstep
+To run it locally while developing:
 
-The obvious trick for a physics game is deterministic lockstep: both sides run
-the same simulation on the same inputs and stay in sync forever, sending only
-~6 bytes of input per frame. This game is already built for it — a fixed 120 Hz
-step (`FIXED_DT`), and `CarInput` is six fields.
+```bash
+cd server && npm run dev
+```
 
-It still isn't safe. Rapier is deterministic *for the same binary on the same
-machine*, not across browsers, CPUs and architectures — an ARM Mac and an x86
-Windows box will not agree on floating-point results forever, and one bit of
-divergence 40 seconds in means the two players are watching different matches
-with no way to notice. Host-authoritative costs more bandwidth and is boring,
-but it cannot desync.
+That serves on `localhost:8787`, which the Online tab accepts as-is — a bare
+`localhost` host is connected over `ws://` rather than `wss://`.
 
-## Host-authoritative, concretely
+## Playing
 
-**Host (player A)**
+1. Both players open the game.
+2. One clicks **Esc → Online → New code**, then **Create room**, and reads the
+   code out (the alphabet has no O/0 or I/1, so it survives being said aloud).
+3. The other types the same code and clicks **Join room**.
 
-- Runs `fixedStep()` exactly as it does now.
-- Applies its own input immediately, and player B's input from the last packet
-  received (buffered one or two steps to smooth jitter).
-- Broadcasts a snapshot at 30 Hz.
+The moment both are in, the match restarts at 0–0 and the HUD shows
+`Online: Host` or `Online: Guest`. The host drives blue, the guest orange.
 
-**Guest (player B)**
+While connected, bots, practice mode, 2v2 and infinite boost are off — the host
+owns the match, so there's nothing meaningful for the guest to toggle. `Esc` no
+longer pauses either; one player can't freeze the other's game.
 
-- Sends its input every frame, stamped with a monotonic tick.
-- Simulates *its own car only*, locally, so steering feels instant.
-- Renders every other body (cars, ball) by interpolating between the last two
-  snapshots, running ~100 ms in the past. That buffer is what makes the ball
-  look smooth instead of teleporting.
-- On each snapshot: compare the authoritative position of its own car against
-  what it predicted for that tick. Under ~0.3 m, blend the error away over a few
-  frames; over that, snap. This is the only fiddly part of the whole feature.
+## Why it's built this way
 
-**Snapshot payload** (30 Hz, binary `ArrayBuffer`, not JSON):
+**Host-authoritative, not lockstep.** Lockstep — both sides simulating from the
+same inputs — would be almost free in bandwidth and fits the fixed 120 Hz step
+this game already has. It's also unsafe: Rapier is deterministic for one binary
+on one machine, not across an ARM Mac and an x86 PC. One diverged bit forty
+seconds in and the two players are silently watching different matches. Host
+authority costs more bytes and cannot desync.
 
-| Field | Bytes | Notes |
+**Relay, not peer-to-peer.** WebRTC would shave the edge hop, but it needs ICE,
+and the ~10–15 % of players behind symmetric NAT need a TURN relay, which is not
+free. A Durable Object always connects, on any network, with no fallback path to
+maintain. See "Upgrade path" below if the latency ever bothers you.
+
+### What runs where
+
+| | Host | Guest |
 | --- | --- | --- |
-| tick | 4 | uint32, host's step counter |
-| ball | 26 | position (3×f32), quaternion (3×i16 smallest-three), velocity (3×f32) |
-| per car | 30 | position, quaternion, velocity, boost (u8), flags (u8: boosting / supersonic / demoed) |
-| score + clock | 6 | only when changed |
+| Physics | Authoritative | Runs the same sim locally for smoothness |
+| Own car | Local input | Local input, corrected toward the host |
+| Other car | Input from packets | Hard-set from snapshots |
+| Ball, pads, score, clock, kickoffs | Decides | Hard-set from snapshots |
+| Goals, demolitions | Decides, sends an event | Plays the effect on the event |
 
-Two cars ≈ 90 bytes per snapshot, ~2.7 KB/s each way. Four cars (2v2 online)
-≈ 150 bytes, ~4.5 KB/s. Nothing.
+The guest simulates everything locally between packets rather than interpolating
+from a buffer, so the ball keeps moving with real physics at 20 Hz of updates.
+Its own car is *nudged* 25 % of the error per snapshot rather than snapped —
+invisible at small drift — and only hard-set past 3 m, where something has
+genuinely gone wrong.
 
-**Input payload** (60–120 Hz, ~8 bytes): tick (u32), throttle/steer as i8,
-roll as i8, and a bit field for jump/boost/drift. Send the last 3 inputs in every
-packet so a dropped datagram costs nothing — this is why the channel should be
-unreliable rather than TCP-like.
+### Wire format
 
-**Events** (goal, demolition, boost pickup, kickoff) go on a *reliable* ordered
-channel so a lost packet can't leave the score wrong.
+Binary, little-endian. JSON would be several times the size for no benefit.
 
-### What has to change in the code
+| Packet | Rate | Size | Direction |
+| --- | --- | --- | --- |
+| Input — tick, throttle/steer/roll as bytes, buttons as bits | 30 Hz | 9 B | guest → host |
+| Snapshot — tick, phase, score, clock, ball, both cars (transform, velocity, boost, flags, that car's own input), 34-pad bitmask | 20 Hz | ~180 B | host → guest |
+| Event — goal, kickoff, demolition, with a position | as they happen | 15 B | host → guest |
+| Ping / pong | 0.5 Hz | 9 B | both |
 
-The good news is the shape is already right — `PhysicsWorld` / `Car` / `Ball`
-have no rendering in them, and `Game.fixedStep()` is the only thing that
-advances the world.
+Each car carries its own input so the receiver extrapolates it the same way the
+sender does between snapshots.
 
-1. Split `Game` into `Simulation` (physics, cars, ball, pads, goal detection)
-   and `Presentation` (meshes, particles, camera, HUD). Mostly moving code.
-2. Give `Simulation` `snapshot(): ArrayBuffer` and `applySnapshot(buf)`.
-   `Car` already exposes everything needed; it needs a `setState()` next to the
-   existing `respawn()`.
-3. Replace the direct `input.readCarInput(playerCar.input)` call with an input
-   source per car: local input, network input, or `Bot`. That is one interface
-   with three implementations, and it makes the existing bots and a remote
-   player interchangeable — which also gets you "2v2 with a friend and two bots"
-   almost for free.
-4. Add `Net` with two implementations: `LoopbackNet` (both ends in one tab, for
-   testing without deploying anything) and `RtcNet`.
+## What it costs
 
-Steps 1–3 are worth doing regardless; they're a tidy-up, not netcode.
+Nothing, at this scale. The Workers free plan gives 100,000 requests and
+13,000 GB-s of Durable Object duration per day, and **inbound WebSocket messages
+bill at 20:1** — 100 messages count as 5 requests. Outbound messages and pings
+are free.
 
-## Hosting options
-
-| Option | Latency | Cost | Effort | Notes |
-| --- | --- | --- | --- | --- |
-| **WebRTC P2P + CF Worker signalling** | Best — direct, typically 10–40 ms between two people in the same country | Free tier covers it | Medium | Needs TURN for the ~10–15 % of players behind symmetric NAT |
-| **Cloudflare Durable Object WebSocket relay** | Both players' RTT to the nearest CF edge, usually +20–50 ms over direct | Free tier: 100 k requests/day; realistically $0 | Low | Simplest thing that always works; the DO is the room |
-| **Fly.io / Railway / Render always-on Node box** | Similar to the DO but one fixed region — bad if you're on different continents | ~$2–5/month | Low | Familiar Node/`ws` code; also the only option if you later want a truly authoritative server |
-| **Authoritative headless server** (Rapier in Node) | Same as above | Same | High | Removes host advantage and cheating. Only worth it if strangers play |
-| **PartyKit** | Same as the DO (it is DOs underneath) | Free tier, then usage | Lowest | Nicest DX; one more dependency |
-
-**Vercel serverless/Edge is not on this list on purpose.** Functions are
-request-scoped and there is no supported way to hold a WebSocket open for a
-match. You could fake it with HTTP long-polling at 10 Hz, and it would feel
-exactly as bad as that sounds.
-
-### Recommendation
-
-Cloudflare Worker + Durable Object, doing double duty: signalling for WebRTC,
-and a WebSocket relay when WebRTC can't connect. One deploy, no servers to
-babysit, and the relay path means the game works for everyone on day one while
-the P2P path is what most sessions actually end up using.
-
-TURN, if it turns out to be needed: Cloudflare Calls has a TURN service on the
-same account, or run `coturn` on the same small VM if you'd rather. Start
-without it and add it only if a real connection fails.
-
-### Sketch of the room server
+A five-minute match sends 30 Hz of input plus 20 Hz of snapshots into the DO:
 
 ```
-POST /room            -> { code: "SWIFT-OTTER" }        create, returns a code
-GET  /room/:code/ws   -> WebSocket, upgraded into the Durable Object for :code
+(30 + 20) × 300 s = 15,000 inbound messages ÷ 20 = 750 billed requests
+300 s of DO time ≈ 37.5 GB-s
 ```
 
-The Durable Object holds at most two sockets. First in is the host. Messages are
-forwarded verbatim to the other socket; the DO never parses game data. On
-disconnect it tells the survivor and closes the room. That's the whole thing —
-roughly 150 lines including the room-code word list.
+That's ~130 matches a day on requests, ~340 on duration, and a room with nobody
+in it costs nothing at all.
 
-## Phases
+## Known limitations
 
-1. **Refactor** — `Simulation` / `Presentation` split, input sources,
-   snapshot + apply, `LoopbackNet`. Verifiable with no server at all: run two
-   simulations in one tab and watch them stay in sync.
-2. **Relay** — deploy the Worker, add room create/join UI (a code you can read
-   over voice chat), get a real 1v1 running over WebSocket.
-3. **Feel** — client-side prediction on the guest's car, snapshot interpolation,
-   error blending. This is the phase that decides whether the game is fun online.
-4. **P2P** — WebRTC handshake through the same room, fall back to the relay
-   automatically. Purely a latency win at this point.
-5. **Extras** — 2v2 online with bots filling empty slots, rejoin after a drop,
-   ping display, host migration (or just end the match — for two friends, ending
-   it is fine).
+- **The host has no input latency and the guest has one RTT of it.** Unavoidable
+  without a dedicated server simulating for both. Between two friends it's fine;
+  it's exactly why competitive games pay for real servers.
+- **Ball hits are the sharp edge.** The Psyonix impulse is sensitive to contact
+  position, so the guest occasionally sees a touch it made get corrected. At
+  typical ping it's not noticeable. Fixing it properly means lag compensation:
+  the host rewinds the ball to where the guest saw it, applies the hit, and
+  re-simulates. Worth doing only if it actually annoys you.
+- **The guest can't reset its car or restart the match** — both are host-only,
+  since a local reset would just be corrected away. Flipping yourself upright
+  with jump + air roll still works, because that's real physics.
+- **If the host closes their tab, the match ends.** No host migration. The other
+  player sees "Your friend left the room" and can start a fresh one.
+- **A backgrounded tab freezes.** Browsers stop `requestAnimationFrame` in hidden
+  tabs, so if the host alt-tabs, the match stops for both. Keep the window
+  visible.
+- **Anyone who guesses your room code can join it.** Codes are 6 characters from
+  a 32-letter alphabet (~1 in 10⁹), rooms only hold two people, and a room only
+  exists while someone is in it — but there's no password.
 
-## Things that will bite
+## Upgrade path
 
-- **Ball hits are the sharp edge.** `tryHitBall` uses the Psyonix impulse, which
-  is very sensitive to exact contact position. With host authority, the guest
-  sees its own hit ~1 RTT before the host confirms it. Either accept a small
-  visible correction on hits, or lag-compensate: the host rewinds the ball to
-  where the guest saw it, applies the hit, and re-simulates forward. Start by
-  accepting the correction; it's usually unnoticeable at 40 ms.
-- **The host has an advantage** — zero input latency versus the guest's RTT.
-  Unavoidable without a dedicated server. Between two friends it's fine; it's
-  the reason competitive games pay for real servers.
-- **Pause and slow-motion** — the goal explosion's `timeScale` and the menu's
-  pause are host-driven and have to be broadcast, not decided locally, or the
-  two clients drift apart in wall-clock time.
-- **Tab throttling.** A backgrounded tab stops `requestAnimationFrame`, so a host
-  who alt-tabs freezes the match. Detect `document.hidden` and either warn or
-  hand off. (This is also why the game appears frozen in a hidden preview pane.)
+If you ever want the last few milliseconds, the same Durable Object can carry a
+WebRTC handshake instead of the match: swap `Connection`'s WebSocket for an
+`RTCDataChannel` and keep the room only for signalling. `OnlineSession` doesn't
+care — it just sends and receives `ArrayBuffer`s. Add TURN only if a real
+connection actually fails.
+
+For 2v2 online, `OnlineSession` would need a third and fourth car in the
+snapshot and a slot assignment from the host; empty slots could stay bots, since
+the host already simulates them.
