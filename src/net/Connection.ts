@@ -11,6 +11,10 @@ export interface ConnectionHooks {
   onPacket(view: DataView, raw: ArrayBuffer): void;
 }
 
+/** Close code the room server uses for "two players are already in here". */
+const ROOM_FULL = 4001;
+const ROOM_FULL_MESSAGE = 'That room is full — your friend is already in a game';
+
 /** Unambiguous alphabet — no O/0, no I/1, so a code survives being read aloud. */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -39,6 +43,8 @@ export class Connection {
   private hooks: ConnectionHooks;
   private pingTimer = 0;
   private closing = false;
+  /** Set when the room turned us away, so the close handler keeps that reason. */
+  private rejected = false;
 
   constructor(hooks: ConnectionHooks) {
     this.hooks = hooks;
@@ -52,6 +58,7 @@ export class Connection {
   connect(server: string, code: string) {
     this.disconnect();
     this.closing = false;
+    this.rejected = false;
     this.code = code.toUpperCase();
 
     let url: string;
@@ -99,7 +106,9 @@ export class Connection {
     };
 
     ws.onerror = () => {
-      if (!this.closing) this.setStatus('error', 'Connection failed — check the server address');
+      if (!this.closing && !this.rejected) {
+        this.setStatus('error', 'Connection failed — check the server address');
+      }
     };
 
     ws.onclose = (e) => {
@@ -108,9 +117,11 @@ export class Connection {
       this.peerPresent = false;
       if (this.closing) {
         this.setStatus('offline', '');
+      } else if (this.rejected || e.code === ROOM_FULL) {
+        // Keep the reason the room gave us rather than reporting a generic drop.
+        this.setStatus('error', ROOM_FULL_MESSAGE);
       } else {
-        // 1013 is what the room sends when it is already full.
-        this.setStatus('error', e.code === 1013 ? 'That room is full' : 'Disconnected');
+        this.setStatus('error', 'Disconnected');
       }
     };
   }
@@ -144,7 +155,10 @@ export class Connection {
     } catch {
       return;
     }
-    if (msg.t === 'hello' && (msg.role === 'host' || msg.role === 'guest')) {
+    if (msg.t === 'full') {
+      this.rejected = true;
+      this.setStatus('error', ROOM_FULL_MESSAGE);
+    } else if (msg.t === 'hello' && (msg.role === 'host' || msg.role === 'guest')) {
       this.role = msg.role;
       this.hooks.onRole(msg.role);
       // Only sockets already in the room get a 'peer' message, so the one

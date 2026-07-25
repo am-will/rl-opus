@@ -17,6 +17,14 @@ export interface Env {
 
 const CODE = /^[A-Z0-9-]{3,12}$/;
 
+/**
+ * Application close code for "this room already has two players".
+ * Deliberately not exported: workerd treats every named export of the entry
+ * module as a handler or Durable Object class, and refuses to start on a
+ * number.
+ */
+const ROOM_FULL = 4001;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -47,16 +55,25 @@ export class Room extends DurableObject {
 
   async fetch(_request: Request): Promise<Response> {
     const existing = this.ctx.getWebSockets();
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+
     if (existing.length >= 2) {
-      return new Response('Room is full', { status: 409 });
+      // Turning the upgrade down with an HTTP status tells the browser nothing
+      // — it just sees a failed connection, indistinguishable from a bad
+      // address. So accept, say why, and close with a code the client can read.
+      // Plain accept() rather than acceptWebSocket(), so this socket is never
+      // counted as a member of the room.
+      server.accept();
+      server.send(JSON.stringify({ t: 'full' }));
+      server.close(ROOM_FULL, 'room full');
+      return new Response(null, { status: 101, webSocket: client });
     }
 
     // Whoever gets there first is the host, and stays the host — a reconnecting
     // player must not steal authority from the one still in the match.
     const role = this.ctx.getWebSockets('host').length === 0 ? 'host' : 'guest';
 
-    const pair = new WebSocketPair();
-    const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server, [role]);
 
     server.send(JSON.stringify({ t: 'hello', role, peers: existing.length + 1 }));
