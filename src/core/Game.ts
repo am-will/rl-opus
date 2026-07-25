@@ -701,6 +701,9 @@ export class Game {
   /** Roster, camera and HUD after connecting, disconnecting or changing role. */
   onOnlineChanged() {
     this.localIndex = this.online.role === 'guest' ? 2 : 0;
+    // A room can fill while you're sat in the menu on a paused game. Online
+    // has no pause, so the match has to start whether the menu is up or not.
+    if (this.onlineEngaged) this.state.setPaused(false);
     this.applySettings({ silent: true });
     this.chase.snap(this.playerCar, this.ball);
     this.menu.refreshIfOpen();
@@ -1044,16 +1047,19 @@ export class Game {
 
   private setMenuOpen(open: boolean) {
     if (open === this.menu.open) return;
-    // Online, the match keeps running while you're in the menu — one player
-    // can't freeze the other's game.
-    const canPause = !this.onlineEngaged;
     if (open) {
       this.menu.show();
-      if (canPause) this.state.setPaused(true);
+      // Online, the match keeps running while you're in the menu — one player
+      // can't freeze the other's game.
+      if (!this.onlineEngaged) this.state.setPaused(true);
     } else {
       this.menu.hide();
       this.input.clearHeld();
-      if (canPause) this.state.setPaused(false);
+      // Always clear the pause on the way out, even online. The match can go
+      // online *while* the menu is open, and if closing it skipped this there
+      // would be nothing left to lift a pause taken before the room filled —
+      // the menu just reopens onto a frozen game.
+      this.state.setPaused(false);
     }
     this.state.revision++;
   }
@@ -1102,8 +1108,9 @@ export class Game {
   restartMatch() {
     this.state.reset();
     // reset() drops us straight into the countdown; if this came from the menu,
-    // stay paused until the player closes it.
-    if (this.menu?.open) this.state.setPaused(true);
+    // stay paused until the player closes it — but never online, where the
+    // guest is waiting on us and pausing isn't ours to do.
+    if (this.menu?.open && !this.onlineEngaged) this.state.setPaused(true);
     this.kickoff();
     this.audio.whistle();
   }
