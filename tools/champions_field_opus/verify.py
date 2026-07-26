@@ -73,12 +73,19 @@ def main():
     check("floor edge inset", C.SIDE_X - max(v.x for v in floor), C.RAMP_R)
 
     # Boost pads: count and exact placement.
-    if boost is not None:
-        m = boost.matrix_world
-        pts = [(m @ v.co) * INV_S for v in boost.data.vertices]
+    # Pads are hex prisms, so their vertices sit on the circumference rather
+    # than at the centre -- match within the pad radius, not a point tolerance.
+    pts = []
+    for nm in ("CF_BoostGlow", "CF_BoostBase", "CF_BoostSoft"):
+        ob = bpy.data.objects.get(nm)
+        if ob is not None:
+            m = ob.matrix_world
+            pts.extend((m @ v.co) * INV_S for v in ob.data.vertices)
+    if pts:
         missing = 0
-        for x, y, _z, _big in C.BOOST_PADS:
-            if not any(abs(p.x - x) < 12 and abs(p.y - y) < 12 for p in pts):
+        for x, y, _z, big in C.BOOST_PADS:
+            r = (C.BIG_PAD_R if big else C.SMALL_PAD_R) * 1.2
+            if not any((p.x - x) ** 2 + (p.y - y) ** 2 <= r * r for p in pts):
                 missing += 1
         rows.append((missing == 0, "boost pads matched",
                      len(C.BOOST_PADS) - missing, len(C.BOOST_PADS)))
