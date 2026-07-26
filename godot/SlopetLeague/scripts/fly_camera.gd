@@ -19,6 +19,7 @@ var _pitch := 0.0
 
 
 func _ready() -> void:
+	current = true          # beat any camera the glb brought in
 	near = 0.1
 	far = 4000.0
 	# Aim at the middle of the pitch, then decompose into yaw/pitch so mouse
