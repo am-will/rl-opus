@@ -81,7 +81,7 @@ def boost_materials():
     ramp.location = (-420, -260)
     ramp.color_ramp.interpolation = "EASE"
     ramp.color_ramp.elements[0].position = 0.0
-    ramp.color_ramp.elements[0].color = (0.52, 0.52, 0.52, 1.0)
+    ramp.color_ramp.elements[0].color = (0.32, 0.32, 0.32, 1.0)
     ramp.color_ramp.elements[1].position = 1.0
     ramp.color_ramp.elements[1].color = (0.0, 0.0, 0.0, 1.0)
     nt.links.new(sep.outputs["Y"], ramp.inputs["Fac"])
@@ -263,15 +263,15 @@ def build_boost(coll, mats):
             decal_v, decal_f = U.merge((decal_v, decal_f), (v, f))
             v, f = _flat_ngon(x, y, DECAL_Z + 0.5, r * 0.52, rot=math.pi / 6)
             core_v, core_f = U.merge((core_v, core_f), (v, f))
-            add_beam(x, y, DECAL_Z, 215.0, r * 0.44, r * 0.22, rot=math.pi / 6)
-            add_beam(x, y, DECAL_Z, 168.0, r * 0.25, r * 0.09)
+            add_beam(x, y, DECAL_Z, 225.0, r * 0.34, r * 0.16, rot=math.pi / 6)
+            add_beam(x, y, DECAL_Z, 150.0, r * 0.18, r * 0.06)
         else:
             r = C.SMALL_PAD_R
             v, f = _flat_ngon(x, y, DECAL_Z, r * 0.70, rot=math.pi / 6)
             decal_v, decal_f = U.merge((decal_v, decal_f), (v, f))
             v, f = _flat_ngon(x, y, DECAL_Z + 0.5, r * 0.42, rot=math.pi / 6)
             core_v, core_f = U.merge((core_v, core_f), (v, f))
-            add_beam(x, y, DECAL_Z, 62.0, r * 0.32, r * 0.11, rot=math.pi / 6)
+            add_beam(x, y, DECAL_Z, 66.0, r * 0.25, r * 0.09, rot=math.pi / 6)
 
     out = {
         "decal": U.mesh_object("CF_BoostDecal", decal_v, decal_f, coll,

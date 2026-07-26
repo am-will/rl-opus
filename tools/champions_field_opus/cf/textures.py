@@ -30,6 +30,13 @@ DARK_PANEL = (0.016, 0.020, 0.032)
 STEEL = (0.180, 0.195, 0.215)
 RIBBON = (0.400, 0.425, 0.450)
 
+# --- branding ---------------------------------------------------------------
+BRAND = "AIONIX"                 # manufacturer wordmark on the wall panels
+LEAGUE = "SLOPET LEAGUE"         # league name on the ad ribbon and hero boards
+LEAGUE_MARK = "SL"               # monogram inside the shield
+SERIES = "AICS"                  # championship series
+SEASON = "SEASON XV"
+
 
 def _save(rgba, path, name, colorspace="sRGB"):
     """Write a float RGBA array out as PNG and return the loaded bpy image."""
@@ -189,17 +196,17 @@ def build_wall(texdir, w=8192, hpx=576):
         mid = (h_kick + h_ribbon) / 2
         kind = i % 4
         if kind == 0:
-            cv.text("ROCKET LEAGUE", cx, mid, 52, (0.09, 0.12, 0.19), weight=0.19)
+            cv.text(LEAGUE, cx, mid, 52, (0.09, 0.12, 0.19), weight=0.19)
         elif kind == 1:
             cv.poly([(cx - 68, mid - 54), (cx + 68, mid - 54),
                      (cx + 68, mid + 22), (cx, mid + 68), (cx - 68, mid + 22)],
                     (0.13, 0.30, 0.62))
-            cv.text("RL", cx, mid - 6, 50, (0.88, 0.91, 0.95), weight=0.2)
+            cv.text(LEAGUE_MARK, cx, mid - 6, 50, (0.88, 0.91, 0.95), weight=0.2)
         elif kind == 2:
-            cv.text("PSYONIX", cx, mid, 54, (0.10, 0.13, 0.20), weight=0.17)
+            cv.text(BRAND, cx, mid, 54, (0.10, 0.13, 0.20), weight=0.17)
         else:
             cv.rect(cx, mid, 250, 74, (0.14, 0.16, 0.21), radius=14)
-            cv.text("RLCS", cx, mid, 44, (0.72, 0.78, 0.86), weight=0.19)
+            cv.text(SERIES, cx, mid, 44, (0.72, 0.78, 0.86), weight=0.19)
 
     # --- main dark panel with chevrons and wordmarks -------------------------
     cv.rect(P / 2, (h_ribbon + h_led) / 2, P, h_led - h_ribbon, DARK_PANEL)
@@ -230,18 +237,18 @@ def build_wall(texdir, w=8192, hpx=576):
         py = h_led - 118
         cv.rect(s, py, plate * 0.84, 132, (0.055, 0.065, 0.085), radius=16)
         if i % 3 == 0:
-            cv.text("RLCS", s, py, 52, (0.62, 0.70, 0.82), weight=0.18)
+            cv.text(SERIES, s, py, 52, (0.62, 0.70, 0.82), weight=0.18)
         elif i % 3 == 1:
-            cv.text("SEASON XV", s, py, 44, (0.50, 0.56, 0.66), weight=0.18)
+            cv.text(SEASON, s, py, 44, (0.50, 0.56, 0.66), weight=0.18)
         else:
-            cv.text("PSYONIX", s, py, 46, (0.58, 0.64, 0.75), weight=0.17)
+            cv.text(BRAND, s, py, 46, (0.58, 0.64, 0.75), weight=0.17)
 
     word = 1150.0
     n_word = max(1, int(round(P / word)))
     word = P / n_word
     for i in range(n_word):
         s = (i + 0.5) * word
-        cv.text("PSYONIX", s, h_led - 320, 88, (0.80, 0.85, 0.92), weight=0.15)
+        cv.text(BRAND, s, h_led - 320, 88, (0.80, 0.85, 0.92), weight=0.15)
 
     # --- LED trim in team colour --------------------------------------------
     span = 64
@@ -332,10 +339,10 @@ def build_board(texdir, w=2048, hpx=512):
     # Shield mark on the left.
     cv.poly([(230, 120), (410, 120), (410, 300), (320, 392), (230, 300)],
             (0.13, 0.34, 0.70), emit=0.55)
-    cv.text("RL", 320, 250, 118, (0.90, 0.94, 1.0), weight=0.2, emit=0.7)
+    cv.text(LEAGUE_MARK, 320, 250, 118, (0.90, 0.94, 1.0), weight=0.2, emit=0.7)
 
-    cv.text("ROCKET LEAGUE", 1180, 320, 128, (0.88, 0.92, 0.98), weight=0.16, emit=0.8)
-    cv.text("WORLD CHAMPIONSHIP", 1180, 168, 68, (0.42, 0.62, 0.92),
+    cv.text(LEAGUE, 1180, 320, 128, (0.88, 0.92, 0.98), weight=0.16, emit=0.8)
+    cv.text(SERIES + " WORLD CHAMPIONSHIP", 1180, 168, 68, (0.42, 0.62, 0.92),
             weight=0.18, emit=0.7)
     return (_save(cv.to_rgba(), os.path.join(texdir, "board_col.png"), "CF_board_col"),
             _save(cv.emit_rgba(), os.path.join(texdir, "board_emit.png"), "CF_board_emit"))
