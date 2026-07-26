@@ -1,11 +1,10 @@
 78098b89c88a74ebe8c20117b8754620
-::res://::1785108723
-bounds.gd::GDScript::4632898427941785658::1785107904::0::1::::<>SceneTree<><>0<>0<><>::
+::res://::1785108857
 check_import.gd::GDScript::8213175224750249311::1785107227::0::1::::<>SceneTree<><>0<>0<><>::
 check_lights.gd::GDScript::5508301732657885432::1785107763::0::1::::<>SceneTree<><>0<>0<><>::
 icon.svg::CompressedTexture2D::5421968908227108412::1785107168::1785107178::1::::<><><>0<>0<>741ff365cd097c3e66eae3f5c914ca90<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
-::res://assets/::1785108632
-champions_field.glb::PackedScene::4520791738887827372::1785108707::1785108632::1::::<><><>0<>0<>a1e71dfeba678ce815745058abd44989<>res://.godot/imported/champions_field.glb-01ccb805192f62ae87fc94c15726a6ea.scn::uid://cj02s2rb46mov::::res://assets/champions_field_hex.png<>uid://bw7y554c47muw::::res://assets/champions_field_turf_col.png<>uid://bdcbqt7d3bv11::::res://assets/champions_field_turf_emit.png<>uid://su2yhugmcfal::::res://assets/champions_field_hex_3.png<>uid://d1hswouxkfjyu::::res://assets/champions_field_board_col.png<>uid://nhc7jmre7aeu::::res://assets/champions_field_board_emit.png<>uid://d1weeiad406hw::::res://assets/champions_field_wall_col.png<>uid://vaw86ta7joq6::::res://assets/champions_field_wall_emit.png
+::res://assets/::1785108839
+champions_field.glb::PackedScene::4520791738887827372::1785108815::1785108839::1::::<><><>0<>0<>a1e71dfeba678ce815745058abd44989<>res://.godot/imported/champions_field.glb-01ccb805192f62ae87fc94c15726a6ea.scn::uid://cj02s2rb46mov::::res://assets/champions_field_hex.png<>uid://bw7y554c47muw::::res://assets/champions_field_turf_col.png<>uid://bdcbqt7d3bv11::::res://assets/champions_field_turf_emit.png<>uid://su2yhugmcfal::::res://assets/champions_field_hex_3.png<>uid://d1hswouxkfjyu::::res://assets/champions_field_board_col.png<>uid://nhc7jmre7aeu::::res://assets/champions_field_board_emit.png<>uid://d1weeiad406hw::::res://assets/champions_field_wall_col.png<>uid://vaw86ta7joq6::::res://assets/champions_field_wall_emit.png
 champions_field_board_col.png::CompressedTexture2D::8999755590563843856::1785107183::1785108631::1::::<><><>0<>0<>6e20f68323dc1a604185fc23488d9304<>res://.godot/imported/champions_field_board_col.png-faa8314ce8289af06059b18acde22a0b.s3tc.ctex::
 champions_field_board_emit.png::CompressedTexture2D::927084682990138748::1785107183::1785108631::1::::<><><>0<>0<>fd1202bc530cabe362909c0085689094<>res://.godot/imported/champions_field_board_emit.png-f37307b203b4aff026b17b7e6d0a2c54.s3tc.ctex::
 champions_field_hex.png::CompressedTexture2D::5457823351552521545::1785107178::1785108631::1::::<><><>0<>0<>b5f62a38d6e64ae7640d4f584351330d<>res://.godot/imported/champions_field_hex.png-e8f0a21a5d359434ba7d8fef8c6a1da3.s3tc.ctex::
@@ -15,7 +14,7 @@ champions_field_turf_emit.png::CompressedTexture2D::2601206307361744778::1785107
 champions_field_wall_col.png::CompressedTexture2D::9029838727767025528::1785107183::1785108631::1::::<><><>0<>0<>76bcceaec0561a44688de6efe0b9ae3d<>res://.godot/imported/champions_field_wall_col.png-10afaec7702a851d70b846c0c9bf6e95.s3tc.ctex::
 champions_field_wall_emit.png::CompressedTexture2D::1475362079056675455::1785107183::1785108631::1::::<><><>0<>0<>ac4340e394751ba90608ad90b55e7531<>res://.godot/imported/champions_field_wall_emit.png-aabbddc0dd7b1f30ad7cab0613e8e406.s3tc.ctex::
 ::res://import/::1785108631
-arena_post_import.gd::GDScript::4066357732543802399::1785108707::0::1::::<>EditorScenePostImport<><>0<>1<><>::
+arena_post_import.gd::GDScript::4066357732543802399::1785108815::0::1::::<>EditorScenePostImport<><>0<>1<><>::
 ::res://scenes/::1785107838
 arena.tscn::PackedScene::-1::1785107838::0::1::::<><><>0<>0<><>::res://assets/champions_field.glb<>res://scripts/fly_camera.gd<>res://scripts/arena_setup.gd
 ::res://scripts/::1785108109
