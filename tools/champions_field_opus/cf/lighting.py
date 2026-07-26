@@ -97,6 +97,22 @@ def build(coll, banks=18, energy=1.05e5):
         coll.objects.link(ob)
         _aim(ob, (0, sy * 1200, 0))
 
+    # Wash aimed at the seating only. The pitch fill has to stay low for
+    # contrast, but the crowd still needs its own light or the bowl goes muddy.
+    bowl = arena.ring(-(stands.TIERS[0][0] + 300.0))[0]
+    for b in range(10):
+        x, y = bowl[int(len(bowl) * b / 10)]
+        lt = bpy.data.lights.new(f"BOWL_{b}", type="AREA")
+        lt.shape = "RECTANGLE"
+        lt.size, lt.size_y = 34.0, 14.0
+        lt.energy = 1.5e4
+        lt.color = (1.0, 0.96, 0.90)
+        lt.use_shadow = False
+        ob = bpy.data.objects.new(f"BOWL_{b}", lt)
+        ob.location = (x * S, y * S, (C.CEIL_Z + 500) * S)
+        coll.objects.link(ob)
+        _aim(ob, (x * 1.9, y * 1.9, 4200))
+
     # Under-roof cove strips, warm, to separate the bowl from the night sky.
     for sy in (-1, 1):
         for sx in (-1, 1):
