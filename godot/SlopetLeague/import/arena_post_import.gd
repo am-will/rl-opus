@@ -13,7 +13,7 @@ extends EditorScenePostImport
 ##    hijacking the viewport from whatever camera the scene actually wants.
 ## 3. Godot ignores COLOR_0 unless the material opts in (crowd and bunting
 ##    arrive white), and node-graph-driven colour has no equivalent at all
-##    (the ball's albedo came from a ColorRamp, so it arrives near-black).
+##    (crowd and bunting).
 ##
 ## glTF also has no area lights, so the 21 fill / team / cove / bowl lights in
 ## the Blender scene are simply absent; approximations are rebuilt here.
@@ -52,19 +52,6 @@ func _post_import(scene: Node) -> Object:
 func _fix_materials(mi: MeshInstance3D) -> void:
 	var vertex_coloured: bool = mi.name.begins_with("CF_Crowd") \
 		or mi.name.begins_with("CF_Bunting")
-	if mi.name.begins_with("CF_Ball"):
-		# The hex map was a ColorRamp *input* in Blender, but glTF wires it
-		# straight in as base colour -- and it is 94% transparent dark, so the
-		# ball renders as a black hole. Clearing albedo_texture on the imported
-		# material does not stick, so replace the material outright.
-		var ball := StandardMaterial3D.new()
-		ball.albedo_color = Color(0.74, 0.77, 0.80)
-		ball.roughness = 0.32
-		ball.metallic = 0.15
-		for i in mi.mesh.get_surface_count():
-			mi.mesh.surface_set_material(i, ball)
-		return
-
 	for i in mi.mesh.get_surface_count():
 		var m: Material = mi.mesh.surface_get_material(i)
 		if not (m is StandardMaterial3D):

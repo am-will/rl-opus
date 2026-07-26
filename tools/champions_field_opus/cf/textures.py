@@ -329,6 +329,36 @@ def build_hex(texdir, r=64.0, line=3.4, px=8):
     return _save(cv.to_rgba(), os.path.join(texdir, "hex.png"), "CF_hex")
 
 
+def build_ball_skin(texdir, r=64.0, line=5.0, px=8, seed=23):
+    """Opaque hex-panel skin for the ball.
+
+    build_hex() keys its cells to *alpha*, which suits the nets and the canopy
+    but means the ball's look only existed as a ColorRamp inside Blender -- and
+    a ColorRamp has no glTF equivalent, so the ball exported as a black sphere.
+    Baking the same layout as real colour makes it survive the round-trip.
+    """
+    tw, th = 3.0 * r, math.sqrt(3.0) * r
+    cv = Canvas(int(tw * px), int(th * px), 0.0, tw, 0.0, th,
+                base=(0.615, 0.645, 0.680))
+
+    rng = np.random.default_rng(seed)
+    corners = [(math.cos(math.tau * k / 6) * r, math.sin(math.tau * k / 6) * r)
+               for k in range(6)]
+    # 3x3 block so strokes crossing a tile edge wrap cleanly.
+    for gy in range(-1, 3):
+        for gx in range(-1, 3):
+            for ox, oy in ((0.0, 0.0), (1.5 * r, th * 0.5)):
+                cx, cy = gx * tw + ox, gy * th + oy
+                pts = [(cx + a, cy + b) for a, b in corners]
+                # Faint per-panel tonal variation, then the seam on top.
+                k = float(rng.uniform(0.93, 1.05))
+                cv.poly(pts, (min(0.615 * k, 1.0), min(0.645 * k, 1.0),
+                              min(0.680 * k, 1.0)))
+                cv.segments(pts, line, (0.105, 0.115, 0.135), closed=True,
+                            cap_round=False)
+    return _save(cv.to_rgba(), os.path.join(texdir, "ball_col.png"), "CF_ball_col")
+
+
 def build_board(texdir, w=2048, hpx=512):
     """The big hero sign that hangs on the stand fascia."""
     cv = Canvas(w, hpx, 0.0, 2048.0, 0.0, 512.0, base=(0.020, 0.024, 0.036))
@@ -354,9 +384,12 @@ def build_all(texdir, quick=False):
         wall = build_wall(texdir, w=2048, hpx=144)
         hexn = build_hex(texdir, px=3)
         board = build_board(texdir, w=512, hpx=128)
+        ball = build_ball_skin(texdir, px=3)
     else:
         turf = build_turf(texdir)
         wall = build_wall(texdir)
         hexn = build_hex(texdir)
         board = build_board(texdir)
-    return {"turf": turf, "wall": wall, "hex": hexn, "board": board}
+        ball = build_ball_skin(texdir)
+    return {"turf": turf, "wall": wall, "hex": hexn, "board": board,
+            "ball": ball}

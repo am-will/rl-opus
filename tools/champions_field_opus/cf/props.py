@@ -289,7 +289,13 @@ def build_boost(coll, mats):
 
 # --- ball -------------------------------------------------------------------
 
-def build_ball(coll, hex_img, rings=48, segs=64):
+# Panel tiling around / down the ball. The hex tile is 1.732:1 and v spans
+# half the u arc on a sphere, so V_TILE = U_TILE * 0.866 keeps them regular.
+U_TILE = 5.0
+V_TILE = 4.33
+
+
+def build_ball(coll, skin_img, rings=48, segs=64):
     verts, faces, uvs = [], [], []
     R = C.BALL_R
     cz = C.BALL_REST_Z
@@ -306,27 +312,22 @@ def build_ball(coll, hex_img, rings=48, segs=64):
             a, b = i * segs + j, i * segs + j2
             c, d = (i + 1) * segs + j, (i + 1) * segs + j2
             faces.append((a, c, d, b))
-            uvs.extend([(j / segs * 8, i / rings * 4),
-                        (j / segs * 8, (i + 1) / rings * 4),
-                        (j2 / segs * 8 if j2 else 8, (i + 1) / rings * 4),
-                        (j2 / segs * 8 if j2 else 8, i / rings * 4)])
+            uvs.extend([(j / segs * U_TILE, i / rings * V_TILE),
+                        (j / segs * U_TILE, (i + 1) / rings * V_TILE),
+                        (j2 / segs * U_TILE if j2 else U_TILE,
+                         (i + 1) / rings * V_TILE),
+                        (j2 / segs * U_TILE if j2 else U_TILE,
+                         i / rings * V_TILE)])
 
-    # Pale shell with dark hex seams -- the hex map's alpha is the seam mask,
-    # its colour is nearly black and must not drive base colour directly.
-    mat = U.principled("CF_Ball", base=(0.62, 0.65, 0.69), roughness=0.34,
-                       metallic=0.10, coat=0.55)
+    # Hex-panel skin baked as real colour, so it survives glTF export intact.
+    mat = U.principled("CF_Ball", base=(0.62, 0.65, 0.69), roughness=0.32,
+                       metallic=0.15, coat=0.5)
     nt = mat.node_tree
     tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = hex_img
+    tex.image = skin_img
     tex.extension = "REPEAT"
-    tex.location = (-760, 200)
-    ramp = nt.nodes.new("ShaderNodeValToRGB")
-    ramp.location = (-540, 200)
-    ramp.color_ramp.elements[0].position = 0.25
-    ramp.color_ramp.elements[0].color = (0.62, 0.65, 0.69, 1.0)
-    ramp.color_ramp.elements[1].position = 0.75
-    ramp.color_ramp.elements[1].color = (0.045, 0.050, 0.060, 1.0)
-    nt.links.new(tex.outputs["Alpha"], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], U.bsdf_of(mat).inputs["Base Color"])
+    tex.location = (-620, 220)
+    nt.links.new(tex.outputs["Color"], U.bsdf_of(mat).inputs["Base Color"])
+
     return U.mesh_object("CF_Ball", verts, faces, coll, materials=[mat],
                          uvs=uvs, shade_smooth=True)
