@@ -24,9 +24,9 @@ def build(scene, haze=0.0016, night=True):
     grad = nt.nodes.new("ShaderNodeValToRGB")
     grad.location = (-800, 260)
     grad.color_ramp.elements[0].position = 0.30
-    grad.color_ramp.elements[0].color = (0.030, 0.052, 0.115, 1.0)
+    grad.color_ramp.elements[0].color = (0.055, 0.085, 0.170, 1.0)
     grad.color_ramp.elements[1].position = 0.85
-    grad.color_ramp.elements[1].color = (0.004, 0.008, 0.028, 1.0)
+    grad.color_ramp.elements[1].color = (0.010, 0.020, 0.055, 1.0)
     zmap = nt.nodes.new("ShaderNodeMapRange")
     zmap.location = (-980, 40)
     zmap.inputs["From Min"].default_value = -0.15
@@ -81,7 +81,7 @@ def build(scene, haze=0.0016, night=True):
 
     bg = nt.nodes.new("ShaderNodeBackground")
     bg.location = (120, 120)
-    bg.inputs["Strength"].default_value = 1.9 if night else 4.0
+    bg.inputs["Strength"].default_value = 3.0 if night else 5.0
     nt.links.new(add2.outputs[2], bg.inputs["Color"])
     nt.links.new(bg.outputs["Background"], out.inputs["Surface"])
 

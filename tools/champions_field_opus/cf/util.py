@@ -245,6 +245,59 @@ def sweep_planar(path, axis_value, radius, axis="y", segments=10, closed=False):
     return verts, faces
 
 
+def sweep_tube_3d(path, radius, segments=12, cap=True):
+    """Sweep a circle along an arbitrary 3D polyline.
+
+    Uses rotation-minimising frames (each ring's reference vector is the
+    previous one projected back perpendicular to the new tangent) so the tube
+    never twists, which a fixed up-vector would do as the path turns.
+    """
+    n = len(path)
+    if n < 2:
+        return [], []
+
+    tangents = []
+    for i in range(n):
+        a = path[max(i - 1, 0)]
+        b = path[min(i + 1, n - 1)]
+        tangents.append(_normalise((b[0] - a[0], b[1] - a[1], b[2] - a[2])))
+
+    ref = (0.0, 0.0, 1.0) if abs(tangents[0][2]) < 0.9 else (1.0, 0.0, 0.0)
+    u = _normalise(_cross(tangents[0], ref))
+
+    verts = []
+    for i in range(n):
+        t = tangents[i]
+        if i:
+            d = sum(u[k] * t[k] for k in range(3))
+            u = _normalise(tuple(u[k] - d * t[k] for k in range(3)))
+        v = _cross(t, u)
+        for s in range(segments):
+            a = TAU * s / segments
+            c, sn = math.cos(a) * radius, math.sin(a) * radius
+            verts.append(tuple(path[i][k] + u[k] * c + v[k] * sn for k in range(3)))
+
+    faces = grid_faces(n, segments, closed_cols=True)
+    if cap:
+        for end, base in ((0, path[0]), (n - 1, path[-1])):
+            centre = len(verts)
+            verts.append(tuple(base))
+            off = end * segments
+            for s in range(segments):
+                s2 = (s + 1) % segments
+                if end:
+                    faces.append((centre, off + s, off + s2))
+                else:
+                    faces.append((centre, off + s2, off + s))
+    return verts, faces
+
+
+def arc_points(cx, cz, radius, a0, a1, samples):
+    return [(cx + radius * math.cos(a0 + (a1 - a0) * k / samples),
+             cz + radius * math.sin(a0 + (a1 - a0) * k / samples))
+            for k in range(samples + 1)]
+
+
 def rounded_rect_path(cx, cz, w, h, radius, arch=0.0, samples=8):
     """Closed rounded-rectangle path in (x, z), optionally bowed at the top."""
     hw, hh = w / 2 - radius, h / 2 - radius

@@ -83,9 +83,9 @@ def configure(scene, samples=48, res=(1600, 900), engine="BLENDER_EEVEE"):
     ee.use_volumetric_shadows = True
     ee.volumetric_start = 0.5
     ee.volumetric_end = 600.0
-    ee.volumetric_samples = 96
+    ee.volumetric_samples = 64
     ee.volumetric_sample_distribution = 0.9
-    ee.volumetric_tile_size = "2"
+    ee.volumetric_tile_size = "4"   # "2" quadruples volume cost for no visible gain here
     ee.gi_cubemap_resolution = "1024"
     ee.clamp_surface_indirect = 8.0
 

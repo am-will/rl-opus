@@ -73,6 +73,22 @@ def main():
     check("floor edge inset", C.SIDE_X - max(v.x for v in floor), C.RAMP_R)
 
     # Boost pads: count and exact placement.
+    # The goal frame must bound the real opening and leave the mouth clear --
+    # a closed rounded-rect leaves a rail across the floor that the ball hits.
+    frame = world_verts("CF_GoalFrame")
+    if frame:
+        one = [p for p in frame if p.y < 0]
+        blocking = [p for p in one
+                    if abs(p.x) < C.GOAL_HALF_W - 60 and p.z < C.GOAL_H - 60]
+        rows.append((not blocking, "frame clear of mouth", len(blocking), 0))
+
+        bar = [p for p in one if abs(p.x) < 200]
+        check("crossbar underside", min(p.z for p in bar), C.GOAL_H, tol=3.0)
+
+        post = [p for p in one if 300 < p.z < 450]
+        check("post inner face", min(abs(p.x) for p in post), C.GOAL_HALF_W, tol=3.0)
+        check("frame reaches floor", min(p.z for p in one), -60.0, tol=60.0)
+
     # Pads are hex prisms, so their vertices sit on the circumference rather
     # than at the centre -- match within the pad radius, not a point tolerance.
     pts = []

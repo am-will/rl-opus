@@ -238,7 +238,12 @@ def _truss(coll, steel):
 
 def _ribbons(coll):
     verts, faces = [], []
-    for (d0, z0, _rows, _tread, _riser) in stands.TIERS:
+    for tier, (d0, z0, _rows, _tread, _riser) in enumerate(stands.TIERS):
+        if tier == 0:
+            # The lowest tier's own fascia sits behind the 20.44 m field wall,
+            # so its ribbon was never visible. Lift it to just above the wall
+            # crown, which is where the reference's brightest band lives.
+            z0 = C.CEIL_Z + 210.0
         pts = arena.ring(-(d0 - 40.0))[0]
         n = len(pts)
         for i in range(n):

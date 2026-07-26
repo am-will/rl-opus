@@ -141,6 +141,20 @@ PERIMETER = (
 )
 
 
+def wall_inset_at_z(z):
+    """How far the wall surface bulges in from its plane at height `z`.
+
+    Zero up the vertical run; on the floor fillet it follows the arc, so
+    anything that needs to sit *on* the wall (the goal frame legs) can track it
+    instead of cutting through.
+    """
+    if z <= 0.0:
+        return RAMP_R
+    if z >= RAMP_R:
+        return 0.0
+    return RAMP_R - math.sqrt(max(0.0, RAMP_R * RAMP_R - (z - RAMP_R) ** 2))
+
+
 def profile_v(z):
     """Texture V coordinate for a world height `z` on the wall."""
     if z <= RAMP_R:

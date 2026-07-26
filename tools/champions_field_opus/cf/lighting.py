@@ -27,7 +27,7 @@ def _spot(coll, name, loc_uu, target_uu, energy, angle=62.0, blend=0.35,
     lt.spot_blend = blend
     lt.shadow_soft_size = radius
     lt.use_shadow = True
-    lt.shadow_maximum_resolution = 0.02
+    lt.shadow_maximum_resolution = 0.004
     ob = bpy.data.objects.new(name, lt)
     ob.location = [c * S for c in loc_uu]
     coll.objects.link(ob)
@@ -77,7 +77,7 @@ def build(coll, banks=18, energy=1.05e5):
     fill = bpy.data.lights.new("FILL", type="AREA")
     fill.shape = "DISK"
     fill.size = 140.0
-    fill.energy = 2.6e4
+    fill.energy = 7.0e3
     fill.color = (0.86, 0.91, 1.0)
     fill.use_shadow = False
     fob = bpy.data.objects.new("FILL", fill)
@@ -103,8 +103,8 @@ def build(coll, banks=18, energy=1.05e5):
             lt = bpy.data.lights.new(f"COVE_{sx}{sy}", type="AREA")
             lt.shape = "RECTANGLE"
             lt.size, lt.size_y = 60.0, 10.0
-            lt.energy = 7.0e3
-            lt.color = (1.0, 0.86, 0.66)
+            lt.energy = 5.0e3
+            lt.color = (0.92, 0.94, 1.0)
             lt.use_shadow = False
             ob = bpy.data.objects.new(f"COVE_{sx}{sy}", lt)
             ob.location = (sx * 5600 * S, sy * 6200 * S, 7000 * S)

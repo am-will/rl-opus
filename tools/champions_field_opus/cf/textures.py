@@ -58,11 +58,12 @@ def build_turf(texdir, w=3072, h=4500):
     # cross-cut checker and per-blade noise.
     rad = np.hypot(X, Y)
     band = np.tanh(np.sin(rad * (2 * math.pi / 1280.0)) * 2.2)
-    checker = (np.sin(X * (math.pi / 1024.0)) * np.sin(Y * (math.pi / 1024.0)))
+    checker = np.tanh(np.sin(X * (math.pi / 1024.0)) * 2.0) * \
+              np.tanh(np.sin(Y * (math.pi / 1024.0)) * 2.0)
     grain = fbm(h, w, 24, 16, octaves=4, seed=7) - 0.5
     streak = value_noise(h, w, 26, 340, seed=11) - 0.5
 
-    mix = np.clip(0.5 + 0.26 * band + 0.10 * checker + 0.30 * grain + 0.16 * streak,
+    mix = np.clip(0.5 + 0.11 * band + 0.30 * checker + 0.26 * grain + 0.14 * streak,
                   0.0, 1.0)[..., None]
     cv.rgb[:] = np.asarray(GRASS_A, F32) * (1 - mix) + np.asarray(GRASS_B, F32) * mix
     # Kept so the mow pattern can be multiplied back over the paint at the end,

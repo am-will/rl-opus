@@ -64,12 +64,63 @@ def goal_materials(hex_img=None):
 def boost_materials():
     base = U.principled("CF_BoostBase", base=(0.045, 0.050, 0.060),
                         roughness=0.3, metallic=0.7)
-    glow = U.emissive("CF_BoostGlow", colour=(1.0, 0.42, 0.05), strength=2.2)
-    glow_soft = U.emissive("CF_BoostGlowSoft", colour=(1.0, 0.50, 0.09), strength=0.9)
+    glow = U.emissive("CF_BoostGlow", colour=(1.0, 0.42, 0.05), strength=6.5)
+    glow_soft = U.emissive("CF_BoostGlowSoft", colour=(1.0, 0.50, 0.09), strength=2.4)
     return {"base": base, "glow": glow, "soft": glow_soft}
 
 
 # --- goals ------------------------------------------------------------------
+
+FRAME_R = 42.0        # goal frame tube radius
+TRIM_R = 16.0         # neon pinstripe radius
+FRAME_PROUD = 44.0    # how far the frame stands off the wall surface
+TOP_CORNER = 210.0    # rounding on the two top corners
+
+
+def goal_frame_path(side, r, samples_leg=14, samples_arc=9, samples_bar=8):
+    """Centreline of one goal frame, as an open inverted U.
+
+    Two things this has to get right, both of which the first version didn't:
+
+    * It is *open at the bottom*. A closed rounded rectangle puts a rail across
+      the mouth at floor level -- a lip the ball would hit on the way in.
+    * The centreline is offset outward from the mouth by exactly the tube
+      radius, so the tube's inner surface lands on the real goal boundary
+      (x = +/-GOAL_HALF_W, z = GOAL_H) instead of floating around it.
+
+    The legs also track the wall's floor fillet in Y, so they lie on the ramp
+    rather than punching through it.
+    """
+    px = C.GOAL_HALF_W + r          # post centreline, inner face on the post
+    zt = C.GOAL_H + r               # crossbar centreline, inner face on the lintel
+    z_arc = zt - TOP_CORNER
+    x_arc = px - TOP_CORNER
+
+    def y_at(z):
+        # Sit FRAME_PROUD in front of whatever the wall surface is doing here.
+        return side * (C.BACK_Y - C.wall_inset_at_z(z) - FRAME_PROUD)
+
+    def leg(sx, upward):
+        # Dense low down where the ramp curves, sparse up the straight run.
+        zs = [-60.0]
+        zs += [C.RAMP_R * (k / samples_leg) ** 0.65 for k in range(1, samples_leg + 1)]
+        zs += [C.RAMP_R + (z_arc - C.RAMP_R) * k / 4 for k in range(1, 5)]
+        zs = sorted(set(zs))
+        if not upward:
+            zs = zs[::-1]
+        return [(sx * px, y_at(max(z, 0.0)), z) for z in zs]
+
+    pts = leg(1, upward=True)
+    for cx, cz in U.arc_points(x_arc, z_arc, TOP_CORNER, 0.0, math.pi / 2, samples_arc)[1:]:
+        pts.append((cx, y_at(cz), cz))
+    for k in range(1, samples_bar):
+        pts.append((U.lerp(x_arc, -x_arc, k / samples_bar), y_at(zt), zt))
+    for cx, cz in U.arc_points(-x_arc, z_arc, TOP_CORNER, math.pi / 2, math.pi,
+                               samples_arc):
+        pts.append((cx, y_at(cz), cz))
+    pts += leg(-1, upward=False)[1:]
+    return pts
+
 
 def build_goals(coll, mats):
     """Arched tubular frame proud of each mouth, plus the hex net cavity."""
@@ -79,20 +130,14 @@ def build_goals(coll, mats):
 
     for side in (1, -1):
         wall_y = C.BACK_Y * side
-        y_frame = wall_y - side * 46.0        # frame stands proud of the wall
 
-        path = U.rounded_rect_path(
-            0.0, C.GOAL_H / 2 + 40.0,
-            2 * C.GOAL_HALF_W + 210.0, C.GOAL_H + 250.0,
-            radius=250.0, arch=110.0, samples=9)
-        # Drop the section that would sit below the floor.
-        path = [(x, max(z, 26.0)) for x, z in path]
-
-        v, f = U.sweep_planar(path, y_frame, 44.0, axis="y", segments=12, closed=True)
+        path = goal_frame_path(side, FRAME_R)
+        v, f = U.sweep_tube_3d(path, FRAME_R, segments=14)
         frame_v, frame_f = U.merge((frame_v, frame_f), (v, f))
 
-        v, f = U.sweep_planar(path, y_frame - side * 34.0, 19.0, axis="y",
-                              segments=10, closed=True)
+        # Neon pinstripe riding the front face of the frame.
+        trim = [(x, y - side * (FRAME_R - TRIM_R + 4.0), z) for x, y, z in path]
+        v, f = U.sweep_tube_3d(trim, TRIM_R, segments=10)
         trim_v, trim_f = U.merge((trim_v, trim_f), (v, f))
 
         # Net: the pocket's five inner faces pulled in slightly, carrying the
