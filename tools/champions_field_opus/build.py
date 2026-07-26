@@ -83,6 +83,33 @@ def temp_lighting(coll):
     bpy.context.scene.world = world
 
 
+# The play volume, and nothing else. CF_Floor is a single planar n-gon at
+# z = 0, so the pitch is one flat collision surface.
+COLLISION_MESHES = ("CF_Floor", "CF_Walls", "CF_Ceiling", "CF_GoalPockets")
+
+
+def tag_collision(root):
+    """Mark the play volume as collision and everything else as decor.
+
+    Boost decals, energy beams, goal frames, nets, crowd and stadium dressing
+    are all excluded, so a car drives over them as though they were not there.
+    Tagged objects are also linked into a `Collision` collection to give an
+    exporter a one-click selection.
+    """
+    coll = U.collection("Collision", root)
+    tagged = []
+    for ob in bpy.data.objects:
+        if ob.type != "MESH":
+            continue
+        is_col = ob.name in COLLISION_MESHES
+        ob["collision"] = is_col
+        if is_col and ob.name not in coll.objects:
+            coll.objects.link(ob)
+            tagged.append(ob.name)
+    print(f"[build] collision: {sorted(tagged)}")
+    return coll
+
+
 def main():
     args = parse_args()
     U.wipe_scene()
@@ -117,6 +144,8 @@ def main():
         lighting.build(c_light)
         lighting.exterior(c_light)
         world.build(scene, haze=args.haze)
+
+    tag_collision(root)
 
     cams = shots.add_cameras(c_cam)
     shots.configure(scene, samples=args.samples, res=tuple(args.res))

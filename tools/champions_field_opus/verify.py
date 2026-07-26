@@ -89,10 +89,37 @@ def main():
         check("post inner face", min(abs(p.x) for p in post), C.GOAL_HALF_W, tol=3.0)
         check("frame reaches floor", min(p.z for p in one), -60.0, tol=60.0)
 
+    # Boost pads must be flat: no lip for a car to catch on, and no collision.
+    for nm, limit in (("CF_BoostDecal", 3.0), ("CF_BoostCore", 3.0)):
+        pv = world_verts(nm)
+        if pv:
+            check(f"{nm[3:]} max height", max(p.z for p in pv), 0.0, tol=limit)
+
+    import bpy as _bpy
+    decor = ("CF_BoostDecal", "CF_BoostCore", "CF_BoostBeam", "CF_Ball",
+             "CF_GoalFrame", "CF_GoalTrim", "CF_GoalNet")
+    bad = [n for n in decor
+           if _bpy.data.objects.get(n) is not None
+           and _bpy.data.objects[n].get("collision", True)]
+    rows.append((not bad, "pads/props non-collision", len(decor) - len(bad),
+                 len(decor)))
+
+    beam = _bpy.data.objects.get("CF_BoostBeam")
+    if beam is not None:
+        rows.append((not beam.visible_shadow, "beam casts no shadow",
+                     0 if not beam.visible_shadow else 1, 0))
+
+    floor = _bpy.data.objects.get("CF_Floor")
+    if floor is not None:
+        rows.append((bool(floor.get("collision")), "pitch is collision",
+                     int(bool(floor.get("collision"))), 1))
+        zs = {round((floor.matrix_world @ v.co).z, 6) for v in floor.data.vertices}
+        rows.append((len(zs) == 1, "pitch is one flat plane", len(zs), 1))
+
     # Pads are hex prisms, so their vertices sit on the circumference rather
     # than at the centre -- match within the pad radius, not a point tolerance.
     pts = []
-    for nm in ("CF_BoostGlow", "CF_BoostBase", "CF_BoostSoft"):
+    for nm in ("CF_BoostDecal", "CF_BoostCore", "CF_BoostBeam"):
         ob = bpy.data.objects.get(nm)
         if ob is not None:
             m = ob.matrix_world

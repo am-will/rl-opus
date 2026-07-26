@@ -62,11 +62,33 @@ def goal_materials(hex_img=None):
 
 
 def boost_materials():
-    base = U.principled("CF_BoostBase", base=(0.045, 0.050, 0.060),
-                        roughness=0.3, metallic=0.7)
-    glow = U.emissive("CF_BoostGlow", colour=(1.0, 0.42, 0.05), strength=6.5)
-    glow_soft = U.emissive("CF_BoostGlowSoft", colour=(1.0, 0.50, 0.09), strength=2.4)
-    return {"base": base, "glow": glow, "soft": glow_soft}
+    decal = U.principled("CF_BoostDecal", base=(0.055, 0.045, 0.035),
+                         roughness=0.45, emission=(1.0, 0.34, 0.04),
+                         emission_strength=1.4)
+    core = U.emissive("CF_BoostCore", colour=(1.0, 0.46, 0.07), strength=7.0)
+
+    # Energy, not geometry: alpha falls off up the column so the beam dissolves
+    # into air rather than ending on a hard edge.
+    beam = U.principled("CF_BoostBeam", base=(0.0, 0.0, 0.0), roughness=1.0,
+                        emission=(1.0, 0.40, 0.05), emission_strength=6.0)
+    nt = beam.node_tree
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    coord.location = (-800, -260)
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    sep.location = (-620, -260)
+    nt.links.new(coord.outputs["UV"], sep.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.location = (-420, -260)
+    ramp.color_ramp.interpolation = "EASE"
+    ramp.color_ramp.elements[0].position = 0.0
+    ramp.color_ramp.elements[0].color = (0.52, 0.52, 0.52, 1.0)
+    ramp.color_ramp.elements[1].position = 1.0
+    ramp.color_ramp.elements[1].color = (0.0, 0.0, 0.0, 1.0)
+    nt.links.new(sep.outputs["Y"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], U.bsdf_of(beam).inputs["Alpha"])
+    beam.surface_render_method = "BLENDED"
+    beam.use_transparent_shadow = True
+    return {"decal": decal, "core": core, "beam": beam}
 
 
 # --- goals ------------------------------------------------------------------
@@ -178,55 +200,91 @@ def build_goals(coll, mats):
 
 # --- boost ------------------------------------------------------------------
 
-def _hex_prism(cx, cy, cz, r, h, rot=0.0):
-    verts, faces = [], []
-    for lvl, z in ((0, cz), (1, cz + h)):
-        for k in range(6):
-            a = rot + math.tau * k / 6
+DECAL_Z = 1.5      # uu -- 1.5 cm. A decal sitting on the deck, not a step.
+
+
+def _flat_ngon(cx, cy, z, r, sides=6, rot=0.0):
+    """A single flat polygon. No thickness, therefore no lip to catch a car."""
+    verts = [(cx + r * math.cos(rot + math.tau * k / sides),
+              cy + r * math.sin(rot + math.tau * k / sides), z)
+             for k in range(sides)]
+    return verts, [tuple(range(sides))]
+
+
+def _flat_ring(cx, cy, z, r0, r1, sides=30, rot=0.0):
+    verts = []
+    for r in (r0, r1):
+        for k in range(sides):
+            a = rot + math.tau * k / sides
             verts.append((cx + r * math.cos(a), cy + r * math.sin(a), z))
-    for k in range(6):
-        j = (k + 1) % 6
-        faces.append((k, j, 6 + j, 6 + k))
-    faces.append((0, 1, 2, 3, 4, 5)[::-1])
-    faces.append((6, 7, 8, 9, 10, 11))
+    faces = [(k, (k + 1) % sides, sides + (k + 1) % sides, sides + k)
+             for k in range(sides)]
     return verts, faces
 
 
+def _beam(cx, cy, z0, h, r_bot, r_top, sides=6, rot=0.0):
+    """Open tapered column of light. UV V runs 0 at the deck to 1 at the tip,
+    which is what the material fades alpha along so it reads as energy."""
+    verts, faces, uvs = [], [], []
+    for r, z in ((r_bot, z0), (r_top, z0 + h)):
+        for k in range(sides):
+            a = rot + math.tau * k / sides
+            verts.append((cx + r * math.cos(a), cy + r * math.sin(a), z))
+    for k in range(sides):
+        j = (k + 1) % sides
+        faces.append((k, j, sides + j, sides + k))
+        uvs.extend([(k / sides, 0.0), ((k + 1) / sides, 0.0),
+                    ((k + 1) / sides, 1.0), (k / sides, 1.0)])
+    return verts, faces, uvs
+
+
 def build_boost(coll, mats):
-    """Six big pads with a floating hex core, 28 small amber chevron plates."""
-    base_v, base_f = [], []
-    glow_v, glow_f = [], []
-    soft_v, soft_f = [], []
+    """Boost pads as flat decals with a weightless column of light above.
+
+    Nothing here has thickness. The pads are single flat polygons 1.5 cm proud
+    of the deck and everything that rises is alpha-blended emission, so a car
+    crosses a pad exactly as if it were driving on bare floor.
+    """
+    decal_v, decal_f = [], []
+    core_v, core_f = [], []
+    beam_v, beam_f, beam_uv = [], [], []
+
+    def add_beam(*args, **kw):
+        v, f, uv = _beam(*args, **kw)
+        off = len(beam_v)
+        beam_v.extend(v)
+        beam_f.extend(tuple(i + off for i in fc) for fc in f)
+        beam_uv.extend(uv)
 
     for x, y, _z, big in C.BOOST_PADS:
         if big:
             r = C.BIG_PAD_R
-            v, f = U.tube((x, y, 2.0), (x, y, 22.0), r * 0.92, segments=28)
-            base_v, base_f = U.merge((base_v, base_f), (v, f))
-            v, f = U.tube((x, y, 22.0), (x, y, 30.0), r * 0.76, segments=28)
-            glow_v, glow_f = U.merge((glow_v, glow_f), (v, f))
-            # Floating core.
-            v, f = _hex_prism(x, y, 92.0, r * 0.38, 150.0)
-            glow_v, glow_f = U.merge((glow_v, glow_f), (v, f))
-            v, f = _hex_prism(x, y, 74.0, r * 0.56, 182.0, rot=math.pi / 6)
-            soft_v, soft_f = U.merge((soft_v, soft_f), (v, f))
+            v, f = _flat_ring(x, y, DECAL_Z, r * 0.60, r * 0.96)
+            decal_v, decal_f = U.merge((decal_v, decal_f), (v, f))
+            v, f = _flat_ngon(x, y, DECAL_Z + 0.5, r * 0.52, rot=math.pi / 6)
+            core_v, core_f = U.merge((core_v, core_f), (v, f))
+            add_beam(x, y, DECAL_Z, 215.0, r * 0.44, r * 0.22, rot=math.pi / 6)
+            add_beam(x, y, DECAL_Z, 168.0, r * 0.25, r * 0.09)
         else:
-            s = C.SMALL_PAD_R * 0.62
-            v, f = _hex_prism(x, y, 2.0, s, 8.0, rot=math.pi / 6)
-            base_v, base_f = U.merge((base_v, base_f), (v, f))
-            v, f = _hex_prism(x, y, 8.0, s * 0.80, 4.0, rot=math.pi / 6)
-            glow_v, glow_f = U.merge((glow_v, glow_f), (v, f))
-            v, f = _hex_prism(x, y, 11.5, s * 0.62, 3.0, rot=math.pi / 6)
-            soft_v, soft_f = U.merge((soft_v, soft_f), (v, f))
+            r = C.SMALL_PAD_R
+            v, f = _flat_ngon(x, y, DECAL_Z, r * 0.70, rot=math.pi / 6)
+            decal_v, decal_f = U.merge((decal_v, decal_f), (v, f))
+            v, f = _flat_ngon(x, y, DECAL_Z + 0.5, r * 0.42, rot=math.pi / 6)
+            core_v, core_f = U.merge((core_v, core_f), (v, f))
+            add_beam(x, y, DECAL_Z, 62.0, r * 0.32, r * 0.11, rot=math.pi / 6)
 
-    return {
-        "base": U.mesh_object("CF_BoostBase", base_v, base_f, coll,
-                              materials=[mats["base"]]),
-        "glow": U.mesh_object("CF_BoostGlow", glow_v, glow_f, coll,
-                              materials=[mats["glow"]]),
-        "soft": U.mesh_object("CF_BoostSoft", soft_v, soft_f, coll,
-                              materials=[mats["soft"]]),
+    out = {
+        "decal": U.mesh_object("CF_BoostDecal", decal_v, decal_f, coll,
+                               materials=[mats["decal"]]),
+        "core": U.mesh_object("CF_BoostCore", core_v, core_f, coll,
+                              materials=[mats["core"]]),
+        "beam": U.mesh_object("CF_BoostBeam", beam_v, beam_f, coll,
+                              materials=[mats["beam"]], uvs=beam_uv),
     }
+    # Light, not matter: it casts nothing and it is not collision.
+    for ob in out.values():
+        ob.visible_shadow = False
+    return out
 
 
 # --- ball -------------------------------------------------------------------

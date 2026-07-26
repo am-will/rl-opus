@@ -37,6 +37,27 @@ Values that Psyonix has never published (corner fillet radius, wall-panel band
 heights, stand rake) are marked `ART` in `const.py` and were matched by eye
 against reference stills.
 
+## Collision
+
+The pitch is **one flat surface**: `CF_Floor` is a single planar n-gon at z = 0
+that runs straight through both goal mouths, so there is no seam or step
+anywhere a car can drive.
+
+`build.py` tags every mesh with a `collision` custom property and links the
+colliding ones into a `Collision` collection, so an exporter has a one-click
+selection:
+
+| collision | meshes |
+|---|---|
+| yes | `CF_Floor`, `CF_Walls`, `CF_Ceiling`, `CF_GoalPockets` |
+| no | everything else — boost decals and beams, goal frames, nets, ball, crowd, stands, roof, jumbotron, signage |
+
+Boost pads carry no thickness at all. The pad is a single flat polygon 1.5 cm
+proud of the deck, and the only thing that rises off it is alpha-blended
+emission with no shadow casting — light, not matter. `verify.py` asserts this
+(`BoostDecal max height`, `beam casts no shadow`, `pads/props non-collision`),
+so nobody can quietly reintroduce a lip.
+
 ## How it's put together
 
 The arena shell is **one swept surface**, not a boolean. A plan-view boundary —
