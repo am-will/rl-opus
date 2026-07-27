@@ -307,9 +307,12 @@ const CAM_HEIGHT := 128.0 * UU  # (RL) ~110
 const CAM_ANGLE := -4.0 * (PI / 180.0)  # (RL) downward pitch
 const CAM_STIFFNESS := 0.55  # (RL) 0..1
 const CAM_SWIVEL_SPEED := 5.5  # (RL)
-## Ball cam pulls back a bit so both car and ball fit.
-const CAM_BALL_DISTANCE := 340.0 * UU
-const CAM_BALL_HEIGHT := 175.0 * UU
+## Ball cam pulls back a bit so both car and ball fit. RL itself uses ONE
+## distance for both modes; the extra reach here is so the ball stays in frame
+## during a challenge. Trimmed from 340/175 — at those the ball subtended about
+## a sixth less than it does in RL.
+const CAM_BALL_DISTANCE := 300.0 * UU
+const CAM_BALL_HEIGHT := 150.0 * UU
 ## FOV kick while boosting / supersonic.
 const CAM_BOOST_FOV := 9.0
 const CAM_SUPERSONIC_FOV := 7.0

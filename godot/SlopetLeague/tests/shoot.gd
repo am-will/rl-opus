@@ -96,6 +96,18 @@ const PLANS := {
 			{"tick": 100, "name": "18_goal"},
 		],
 	},
+	# A ball hanging in the air with the deck in frame, for the contact shadow
+	# and the landing ring.
+	"lob": {
+		"spawn": {"x": 0.0, "z": -36.0, "yaw": 0.0, "boost": 100.0},
+		"ball": {"p": [2.0, 13.0, -12.0], "v": [3.0, 1.0, 7.0]},
+		"input": [{"from": 0, "to": 300, "throttle": 1.0}],
+		"shots": [
+			{"tick": 20, "name": "24_lob"},
+			{"tick": 80, "name": "25_lob"},
+			{"tick": 130, "name": "26_lob"},
+		],
+	},
 	# A live match rather than free play, so the scoreboard has a clock, a score
 	# and a countdown on it. The HUD is most of what these frames are for.
 	"hud": {

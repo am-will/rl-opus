@@ -16,6 +16,7 @@ const BLAST_SPIN := 4.5
 
 var _light: OmniLight3D
 var _burst: GPUParticles3D
+var _smoke: GPUParticles3D
 var _ring: MeshInstance3D
 var _ring_mat: StandardMaterial3D
 var _t := -1.0
@@ -68,17 +69,75 @@ func _ready() -> void:
 	pm.angular_velocity_min = -8.0
 	pm.angular_velocity_max = 8.0
 	_burst.process_material = pm
+	_burst.draw_pass_1 = _sprite(
+		0.34, FxSprites.glow(2.6), BaseMaterial3D.BLEND_MODE_ADD
+	)
+	add_child(_burst)
+
+	_build_smoke()
+
+
+## A slower, heavier layer under the sparks. The burst on its own is a firework;
+## the debris is what makes the net look like it has been hit by something.
+func _build_smoke() -> void:
+	_smoke = GPUParticles3D.new()
+	_smoke.amount = 70
+	_smoke.lifetime = 2.2
+	_smoke.one_shot = true
+	_smoke.explosiveness = 0.85
+	_smoke.local_coords = false
+	_smoke.emitting = false
+	_smoke.draw_order = GPUParticles3D.DRAW_ORDER_VIEW_DEPTH
+
+	var pm := ParticleProcessMaterial.new()
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	pm.emission_sphere_radius = 1.6
+	pm.direction = Vector3(0, 1, 0)
+	pm.spread = 180.0
+	pm.initial_velocity_min = 2.0
+	pm.initial_velocity_max = 9.0
+	pm.gravity = Vector3(0, 0.8, 0)
+	pm.damping_min = 2.0
+	pm.damping_max = 4.5
+	pm.scale_min = 1.0
+	pm.scale_max = 2.4
+	pm.angle_min = -180.0
+	pm.angle_max = 180.0
+	pm.angular_velocity_min = -40.0
+	pm.angular_velocity_max = 40.0
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 1.2
+	pm.turbulence_noise_scale = 1.6
+
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.4))
+	curve.add_point(Vector2(1.0, 1.8))
+	var ct := CurveTexture.new()
+	ct.curve = curve
+	pm.scale_curve = ct
+	_smoke.process_material = pm
+
+	_smoke.draw_pass_1 = _sprite(
+		1.1, FxSprites.puff(0.9, 5), BaseMaterial3D.BLEND_MODE_MIX
+	)
+	add_child(_smoke)
+
+
+func _sprite(size: float, tex: Texture2D, blend: int) -> QuadMesh:
 	var quad := QuadMesh.new()
-	quad.size = Vector2(0.34, 0.34)
+	quad.size = Vector2(size, size)
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.blend_mode = blend
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.vertex_color_use_as_albedo = true
+	mat.albedo_texture = tex
+	mat.disable_receive_shadows = true
+	mat.proximity_fade_enabled = true
+	mat.proximity_fade_distance = 0.6
 	quad.material = mat
-	_burst.draw_pass_1 = quad
-	add_child(_burst)
+	return quad
 
 
 ## `at` is where the ball crossed; `cars` all get thrown.
@@ -97,6 +156,22 @@ func fire(at: Vector3, colour: Color, cars: Array, rng: RandomNumberGenerator) -
 	pm.color_ramp = gt
 	_burst.restart()
 	_burst.emitting = true
+
+	# The smoke takes the team colour too, but washed most of the way out — a
+	# fully saturated cloud reads as a coloured gel over the net.
+	var smoke_pm := _smoke.process_material as ParticleProcessMaterial
+	var tint := colour.lerp(Color(0.82, 0.83, 0.86), 0.72)
+	var sg := Gradient.new()
+	sg.set_color(0, Color(tint.r, tint.g, tint.b, 0.0))
+	sg.set_color(1, Color(tint.r, tint.g, tint.b, 0.0))
+	sg.add_point(0.12, Color(tint.r, tint.g, tint.b, 0.42))
+	sg.add_point(0.55, Color(tint.r, tint.g, tint.b, 0.22))
+	var sgt := GradientTexture1D.new()
+	sgt.gradient = sg
+	smoke_pm.color_ramp = sgt
+	_smoke.restart()
+	_smoke.emitting = true
+
 	_ring.visible = true
 	_blast(at, cars, rng)
 

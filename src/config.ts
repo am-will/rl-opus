@@ -330,9 +330,15 @@ export const CAMERA = {
   angle: -4 * (Math.PI / 180), // (RL) downward pitch
   stiffness: 0.55, // (RL) 0..1
   swivelSpeed: 5.5, // (RL)
-  /** Ball cam pulls back a bit so both car and ball fit. */
-  ballCamDistance: uu(340),
-  ballCamHeight: uu(175),
+  /**
+   * Ball cam pulls back a bit so both car and ball fit. Rocket League itself
+   * uses ONE distance for both camera modes; the extra reach here is so the
+   * ball stays in frame during a challenge. Trimmed from 340/175 — at the old
+   * numbers the ball subtended about a sixth less than it does in RL, and a
+   * ball you have to squint at is a ball you cannot judge the bounce of.
+   */
+  ballCamDistance: uu(300),
+  ballCamHeight: uu(150),
   /** FOV kick while boosting / supersonic. */
   boostFov: 9,
   supersonicFov: 7,

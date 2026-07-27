@@ -197,9 +197,9 @@ func _sprite(size: float, tex: Texture2D, blend: int) -> QuadMesh:
 # ---------------------------------------------------------------------------
 
 func _build_ground() -> void:
-	_shadow = GroundMark.shadow(1.5)
+	_shadow = GroundMark.shadow(0.45)
 	add_child(_shadow)
-	_marker = GroundMark.glow_ring(0.70, 0.95, 0.10)
+	_marker = GroundMark.glow_ring(0.62, 0.97, 0.10)
 	add_child(_marker)
 
 
@@ -280,7 +280,7 @@ func _update_ground(dt: float) -> void:
 	var spread := Feel.BALL_RADIUS * 2.0 * (1.0 + t * 1.5)
 	_shadow.place(
 		Vector3(p.x, 0.0, p.z), Vector3.UP, Vector3.BACK, spread, spread,
-		Color(0, 0, 0, (0.62 - 0.48 * t) * (1.0 if over else 0.0))
+		Color(0, 0, 0, (0.7 - 0.5 * t) * (1.0 if over else 0.0))
 	)
 
 	# --- landing marker ------------------------------------------------------
@@ -303,7 +303,10 @@ func _update_ground(dt: float) -> void:
 	# Fades in over the first half second of flight so a scuffed ball that pops
 	# up for a moment does not strobe a marker onto the deck.
 	var fade := clampf((height - MARKER_MIN_HEIGHT) / 1.4, 0.0, 1.0)
+	# Above 1.0 on purpose. The mark is additive over a lit pitch, and the
+	# environment's glow picks HDR values up — at 1.0 the ring was a dull tint
+	# on the grass rather than something painted onto it in light.
 	_marker.place(
 		Vector3(at.x, 0.0, at.z), Vector3.UP, Vector3.BACK, ring, ring,
-		Color(1.0, 0.93, 0.66, 0.5 * beat * fade)
+		Color(2.4, 2.0, 1.15, 0.62 * beat * fade)
 	)
