@@ -4,9 +4,10 @@ Branch `godot-fidelity`. Everything before this work is tagged `godot-flat-basel
 `git checkout godot-flat-baseline` reverts the lot.
 
 Two documents matter: this one for where things stand and what to do next, and
-`docs/GODOT_FIDELITY_HANDOFF.md` for the itemised record of the visual pass and
-the engine gotchas behind it. **One claim in that document is now out of date and
-it is the most important thing in this file — see "Do this first".**
+`docs/GODOT_FIDELITY_HANDOFF.md` for the itemised record of the first visual pass
+and the engine gotchas behind it. That document is superseded in places — it
+predates `AreaLight3D` and its numbers were measured with fog on; read "The
+fidelity pass is done" below first.
 
 ---
 
