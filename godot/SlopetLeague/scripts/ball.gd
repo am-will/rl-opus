@@ -11,6 +11,7 @@ extends RigidBody3D
 
 ## Set by Car when it strikes the ball; drives the impact VFX.
 var last_hit_strength := 0.0
+var fx: BallFx = null
 
 ## Cached post-step state, refreshed by sync().
 var pos := Vector3.ZERO
@@ -41,6 +42,12 @@ func _ready() -> void:
 
 	collision_layer = Layers.BALL
 	collision_mask = Layers.ARENA | Layers.CAR
+
+	fx = BallFx.new()
+	fx.name = "Fx"
+	add_child(fx)
+	fx.setup(self)
+
 	sync()
 
 
