@@ -230,6 +230,16 @@ this.
 so Godot silently reuses the stale `.scn` and none of your changes land.
 `capture_godot.sh` drops the cached scene and reimports when the script is newer.
 
+**`godot --headless --import` rewrites `project.godot` and drops settings.**
+Observed on Godot 4.6 against a file written by an earlier build: it silently
+removed `use_taa`, `positional_shadow/atlas_size=8192`,
+`screen_space_reflection/roughness_quality` and the default clear colour, along
+with every comment. A plain capture run does not do this — only the explicit
+import, which `capture_godot.sh` performs whenever `arena_post_import.gd` is
+newer than the cached `.scn`. `git diff godot/SlopetLeague/project.godot` after
+any capture session, and check out the file if it moved, or every subsequent
+measurement is taken with TAA off against a smaller shadow atlas.
+
 **Kill stray Godot processes.** Killing `capture_godot.sh` does not kill its Godot
 child. Two zombies from earlier captures sat on the GPU for an hour and made
 everything look mysteriously slow. `pkill -f "godot --path <repo>"`.
