@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/champions_field.glb" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="2_fly"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/shot_cameras.gd" id="4_shots"]
 [ext_resource type="Shader" path="res://shaders/night_sky.gdshader" id="5_sky"]
 [ext_resource type="Shader" path="res://shaders/streaks.gdshader" id="6_streaks"]
+[ext_resource type="VoxelGIData" path="res://assets/arena_voxelgi.res" id="7_gi"]
 
 [sub_resource type="ShaderMaterial" id="StreakMat_1"]
 shader = ExtResource("6_streaks")
@@ -24,8 +25,8 @@ ambient_light_source = 3
 ambient_light_energy = 1.0
 reflected_light_source = 2
 tonemap_mode = 4
-tonemap_exposure = 1.0
-tonemap_white = 6.0
+tonemap_exposure = 0.66
+tonemap_agx_contrast = 1.55
 ssr_enabled = true
 ssr_max_steps = 64
 ssr_fade_in = 0.2
@@ -44,7 +45,7 @@ ssil_intensity = 1.4
 ssil_normal_rejection = 0.7
 glow_enabled = true
 glow_normalized = true
-glow_intensity = 0.25
+glow_intensity = 0.12
 glow_strength = 1.0
 glow_bloom = 0.05
 glow_blend_mode = 0
@@ -67,7 +68,6 @@ volumetric_fog_gi_inject = 0.0
 volumetric_fog_ambient_inject = 0.0
 volumetric_fog_sky_affect = 0.0
 adjustment_enabled = true
-adjustment_contrast = 1.15
 adjustment_saturation = 1.04
 
 [node name="Arena" type="Node3D"]
@@ -77,6 +77,12 @@ script = ExtResource("3_setup")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Env_1")
+
+[node name="VoxelGI" type="VoxelGI" parent="."]
+subdiv = 2
+size = Vector3(248, 104, 268)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 50, 0)
+data = ExtResource("7_gi")
 
 [node name="FlyCam" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 14, 46)

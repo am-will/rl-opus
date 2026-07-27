@@ -10,6 +10,9 @@
 #   --ambient 0.3                scale the (unoccluded) sky ambient
 #   --exposure 0.9               scale linear exposure ahead of the tonemapper
 #
+# TOOL=tone_compare switches the readout from region means to the luminance
+# percentiles, which is what separates a level error from a curve error.
+#
 # Every light lives in the import script, where changing one costs a full
 # reimport; these levers are the same numbers applied at _ready(), so a bracket
 # is one 25 s capture per value instead of one reimport per value. The winner
@@ -34,6 +37,6 @@ for spec in "$@"; do
 		--capture "$png" --shot "$shot" --fog 0 $spec 2>&1 |
 		grep -Ev '^$|mvk-error|Godot Engine|Vulkan 1|Metal 4|capture\]' || true
 	echo "=== [$i] $spec"
-	python3 "$root/tools/champions_field_opus/compare_shots.py" "$ref" "$png" |
-		tail -7
+	python3 "$root/tools/champions_field_opus/${TOOL:-compare_shots}.py" "$ref" "$png" |
+		tail -"${LINES:-7}"
 done

@@ -59,9 +59,12 @@ extends EditorScenePostImport
 const W_TO_SPOT := 1.0 / (4.0 * PI * PI)          # 1 / 39.478
 const W_TO_AREA := 1.0 / (PI * PI * 0.9572)       # 1 / 9.4477
 
-# One knob for the whole rig. The conversion above fixes every RATIO; this is
-# the only number that is ours, and it exists because Blender's AgX sits on top
-# of real path-traced bounce that Godot has to reproduce some other way.
+# One knob for the whole rig, kept at parity. The remaining absolute offset --
+# Godot renders this scene about 1.5x hot against the reference -- is carried
+# by `tonemap_exposure` in arena.tscn instead, deliberately: exposure scales
+# the emissive geometry along with the lights, and GAIN would not, so folding
+# it in here would push the boost pads, wall strips and floodlight lenses
+# 1.5x brighter relative to everything they light.
 const GAIN := 1.0
 
 const ATTEN := 2.0                # true inverse square, everywhere
@@ -238,6 +241,15 @@ const BOWL_WATTS := 1.5e4
 const COVE_WATTS := 5.0e3
 const EXT_WATTS := 6.0e4
 
+# The one place the derivation is overridden, so it is written down rather
+# than folded into the wattage above. At parity the crowd band measures about
+# 15/255 hot and 0.05 flat in saturation against `now_hero.png` -- washed out,
+# not just bright. The crowd is 733k loose boxes; EEVEE darkens the mass with
+# ray-traced occlusion between them, and Godot's SSAO at a 1.6 m radius barely
+# touches it. 0.7 is the measured value that puts the band back, and it is a
+# stand-in for missing occlusion, not a claim about the light.
+const BOWL_CORRECTION := 0.7
+
 # `range` is only a cutoff window, and it bites earlier than it looks: at
 # d = 0.7 * range the window is already 0.58. These are set to roughly three
 # times each light's working distance so the falloff is the exponent's, not
@@ -270,7 +282,8 @@ func _rebuild_area_lights(scene: Node) -> void:
 		var p: Vector2 = BOWL_RING[b]
 		_area(scene, "BOWL_%d" % b,
 			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.9, p.y * 1.9, 4200),
-			Color(1.0, 0.96, 0.90), BOWL_WATTS, BOWL_SIZE, BOWL_RANGE)
+			Color(1.0, 0.96, 0.90), BOWL_WATTS * BOWL_CORRECTION,
+			BOWL_SIZE, BOWL_RANGE)
 
 	# COVE: under-roof strips that separate the bowl from the night sky.
 	for sy in [-1.0, 1.0]:
@@ -312,7 +325,6 @@ func _rebuild_area_lights(scene: Node) -> void:
 func _area(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
 		colour: Color, watts: float, size: Vector2, rng: float) -> void:
 	var l := AreaLight3D.new()
-	l.name = name
 	l.light_color = colour
 	l.light_energy = watts * W_TO_AREA * GAIN
 	l.area_normalize_energy = true
@@ -321,7 +333,7 @@ func _area(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
 	l.area_attenuation = ATTEN
 	l.shadow_enabled = false        # every one of these was use_shadow=False
 	l.light_volumetric_fog_energy = 0.2
-	_attach(scene, l, pos_uu)
+	_attach(scene, l, name, pos_uu)
 	# look_at() needs the node inside a tree; nothing is, during import.
 	var target := to_godot(aim_uu)
 	# FILL points straight down, which is degenerate against +Y.
@@ -331,8 +343,12 @@ func _area(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
 	l.look_at_from_position(l.position, target, up)
 
 
-func _attach(scene: Node, l: Light3D, pos_uu: Vector3) -> void:
+## `add_child` assigns an auto-generated name to any node whose own name has
+## not stuck yet, so naming before attaching quietly produced 21 lights called
+## `@AreaLight3D@19797` -- which every by-name tool then missed. Name after.
+func _attach(scene: Node, l: Light3D, name: String, pos_uu: Vector3) -> void:
 	scene.add_child(l)
+	l.name = name
 	l.owner = scene
 	l.position = to_godot(pos_uu)
 

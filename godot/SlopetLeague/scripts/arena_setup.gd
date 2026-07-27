@@ -16,6 +16,9 @@ extends Node3D
 ## toggles it, so turning it back on later is one key, not a rebuild.
 const FOG_DEFAULT := 0.0
 
+## Baked into the VoxelGIData by `--bake-gi`; see _bake_gi.
+const GI_ENERGY := 0.7
+
 var _capture_path := ""
 var _frames := 0
 var _env: Environment = null
@@ -85,6 +88,51 @@ func _ready() -> void:
 	i = args.find("--env")
 	if i != -1 and i + 1 < args.size():
 		_set_env(args[i + 1])
+
+	i = args.find("--gi")
+	if i != -1 and i + 1 < args.size():
+		var gi := get_tree().current_scene.find_child("VoxelGI", true, false)
+		if gi is VoxelGI and gi.data != null:
+			gi.data.energy *= float(args[i + 1])
+			print("[gi] energy = %.3f" % gi.data.energy)
+
+	i = args.find("--bake-gi")
+	if i != -1 and i + 1 < args.size():
+		_bake_gi(args[i + 1])
+
+
+## Bake the VoxelGI and write the result out, then quit.
+##
+## Godot has three ways to get indirect light and only this one can be driven
+## from a script: `LightmapGI.bake()` is not exposed to GDScript at all (it is
+## an editor plugin), and SDFGI measured at +0.6/255 on the boards, which is
+## nothing. VoxelGI also has the property the other two lack for this job --
+## it never replaces direct lighting, it only adds bounce on top, so the
+## direct rig that has just been matched to Blender's wattages survives intact.
+##
+## What it is actually here to carry is the emissive geometry. The wall
+## strips, the chevrons, the ceiling coves, the 34 boost pads, the goal frame
+## and the 18 floodlight lenses are all emissive, and in Blender they light
+## the room. In Godot an emissive material lights nothing at all unless a GI
+## volume picks it up, which is most of why the dasher boards read near-black
+## here against a mid-grey in the reference.
+func _bake_gi(path: String) -> void:
+	var gi := get_tree().current_scene.find_child("VoxelGI", true, false)
+	if not (gi is VoxelGI):
+		push_error("[gi] no VoxelGI node in the scene")
+		get_tree().quit(1)
+		return
+	var t0 := Time.get_ticks_msec()
+	gi.bake(get_tree().current_scene, false)
+	print("[gi] baked in %.1f s" % ((Time.get_ticks_msec() - t0) / 1000.0))
+	# Blender traces its indirect in screen space with clamp_surface_indirect
+	# at 8.0, so its bounce is bounded in a way a voxel cone trace is not.
+	# 0.7 is the measured level that puts the dasher boards at -0.8/255 of the
+	# reference instead of +6.5.
+	gi.data.energy = GI_ENERGY
+	var err := ResourceSaver.save(gi.data, path)
+	print("[gi] %s -> %s" % ["saved" if err == OK else "FAILED %d" % err, path])
+	get_tree().quit(0 if err == OK else 1)
 
 
 ## `--lights BOWL=0.6,TEAM=1.3` scales the energy of every light whose node
