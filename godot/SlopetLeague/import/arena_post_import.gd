@@ -16,9 +16,9 @@ extends EditorScenePostImport
 ##
 ## glTF also has no area light type, so the 21 fill / team / bowl / cove /
 ## exterior lights in `cf/lighting.py` are simply absent. They are rebuilt here
-## from the same positions, aim targets and colours, as spots rather than the
-## omnis that used to stand in for them -- an omni radiates in every direction,
-## which is exactly how a scene loses its lighting structure.
+## from the same positions, aim targets, colours AND SHAPES as real
+## `AreaLight3D`s -- see `_area` for why that is now possible and what it is
+## worth.
 
 # --- floodlights ------------------------------------------------------------
 # The 18 spots do survive glTF; what does not survive is any sense of falloff.
@@ -178,83 +178,105 @@ func _turf_noise() -> NoiseTexture2D:
 
 
 # --- the 21 lights glTF cannot carry ----------------------------------------
+#
+# Every one of these is an AREA light in `cf/lighting.py`, with an explicit
+# shape and size. Until Godot 4.7 there was nothing to port them onto, so they
+# were rebuilt as wide spots with the angle attenuation standing in for a
+# hemisphere -- the single largest approximation in the whole visual pass.
+#
+# 4.7 shipped `AreaLight3D`, so they are now ported as what they are, at
+# Blender's own dimensions. `_area` documents the units.
+
+# Blender energies (W) and shapes, read straight from cf/lighting.py. Kept as
+# named constants so the two files can be diffed by eye.
+const FILL_SIZE := Vector2(124.07, 124.07)   # 140 m DISK, as an equal-area rect
+const TEAM_SIZE := Vector2(90.0, 26.0)
+const BOWL_SIZE := Vector2(34.0, 14.0)
+const COVE_SIZE := Vector2(60.0, 10.0)
+const EXT_SIZE := Vector2(160.0, 160.0)
+
 
 func _rebuild_area_lights(scene: Node) -> void:
-	# FILL: a 140 m disk 72 m up. The one light here that really is omni-ish;
-	# everything else below is aimed and belongs in a cone.
-	_omni(scene, "FILL", Vector3(0, 0, CEIL_Z + 5200), Color(0.86, 0.91, 1.0),
-		8.0, 300.0, 1.0)
+	# FILL: a 140 m disk 72 m up, pointing straight down -- cf/lighting.py
+	# never calls _aim on it, so it keeps a Blender light's default -Z.
+	_area(scene, "FILL", Vector3(0, 0, CEIL_Z + 5200), Vector3(0, 0, 0),
+		Color(0.86, 0.91, 1.0), 8.0, FILL_SIZE, 300.0, 1.0)
 
 	# TEAM: 90 x 26 rectangles at each end, aimed back at the pitch. This is
 	# what tints the two halves. Blue defends Blender -Y, which is Godot +Z.
 	for sy in [-1.0, 1.0]:
 		var col := BLUE_HOT if sy < 0.0 else ORANGE_HOT
-		_spot(scene, "TEAM_%d" % int(sy),
+		_area(scene, "TEAM_%d" % int(sy),
 			Vector3(0, sy * (BACK_Y + 1400), 2600), Vector3(0, sy * 1200, 0),
-			col, 19.0, 130.0, 200.0, 1.0)
+			col, 19.0, TEAM_SIZE, 200.0, 1.0)
 
 	# BOWL: ten strips on the lower-tier lip, aimed up and out across the
 	# seating. The pitch fill has to stay low for contrast, so the crowd needs
 	# its own light or the bowl goes muddy.
 	for b in BOWL_RING.size():
 		var p: Vector2 = BOWL_RING[b]
-		_spot(scene, "BOWL_%d" % b,
-			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.5, p.y * 1.5, 3000),
-			Color(1.0, 0.95, 0.87), 60.0, 165.0, 150.0, 1.2)
+		_area(scene, "BOWL_%d" % b,
+			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.9, p.y * 1.9, 4200),
+			Color(1.0, 0.96, 0.90), 60.0, BOWL_SIZE, 150.0, 1.2)
 
-	# COVE: warm under-roof strips that separate the bowl from the night sky.
+	# COVE: under-roof strips that separate the bowl from the night sky.
 	for sy in [-1.0, 1.0]:
 		for sx in [-1.0, 1.0]:
-			_spot(scene, "COVE_%d%d" % [int(sx), int(sy)],
+			_area(scene, "COVE_%d%d" % [int(sx), int(sy)],
 				Vector3(sx * 5600, sy * 6200, 7000),
 				Vector3(sx * 1800, sy * 2200, 1200),
-				Color(0.95, 0.93, 0.92), 16.0, 140.0, 160.0, 1.0)
+				Color(0.92, 0.94, 1.0), 16.0, COVE_SIZE, 160.0, 1.0)
 
 	# EXT: top light on the roof so the bowl reads from outside. Only the
 	# aerial shot ever sees these.
 	for sy in [-1.0, 1.0]:
 		for sx in [-1.0, 1.0]:
-			_spot(scene, "EXT_%d%d" % [int(sx), int(sy)],
+			_area(scene, "EXT_%d%d" % [int(sx), int(sy)],
 				Vector3(sx * 12000, sy * 14000, 26000),
 				Vector3(sx * 8600, sy * 10400, 9900),
-				Color(0.62, 0.72, 1.0), 95.0, 44.0, 600.0, 1.0)
+				Color(0.62, 0.72, 1.0), 95.0, EXT_SIZE, 600.0, 1.0)
 
 
-func _spot(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
-		colour: Color, energy: float, angle: float, rng: float,
+## A Blender area light, ported as an area light.
+##
+## `area_normalize_energy` is the property that makes this a port rather than a
+## re-tune. Measured against an OmniLight3D on a white Lambertian plane, an
+## AreaLight3D with it ON delivers exactly the same on-axis illuminance for the
+## same `light_energy`, and obeys the same `pow(d, -attenuation)` law on raw
+## metres. So `light_energy` here means what it means everywhere else in this
+## file, the existing tuned levels carry over, and `area_size` only changes the
+## SHAPE of the emission -- which is the whole point:
+##
+##   * light wraps over the full hemisphere instead of stopping at a cone edge,
+##     so the lower tiers stop going black under the bowl strips;
+##   * the specular highlight is the shape of the source, so the dasher boards
+##     get a 90 m streak from the team wash instead of a point;
+##   * the falloff near a large source is the real form factor, not 1/d^2.
+##
+## Turning it OFF would make `light_energy` the surface radiance instead, i.e.
+## total power scaling with area -- also measured, also correct, but a
+## different unit and not the one the rest of this file speaks.
+func _area(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
+		colour: Color, energy: float, size: Vector2, rng: float,
 		atten: float) -> void:
-	var l := SpotLight3D.new()
+	var l := AreaLight3D.new()
 	l.name = name
 	l.light_color = colour
 	l.light_energy = energy
-	# Blender's spot_size is a full cone; Godot's spot_angle is the half angle.
-	# Every light rebuilt here was a RECTANGLE or DISK area light, though, and
-	# an area light emits over the whole hemisphere in front of it rather than
-	# down a cone. Ported at their nominal widths these lit the upper deck in
-	# ten tight pools and left the lower tiers black, so the angles below are
-	# opened up towards hemispherical and the attenuation kept soft.
-	l.spot_angle = minf(angle * 0.5, 89.0)
-	l.spot_angle_attenuation = 0.4
-	l.spot_range = rng
-	l.spot_attenuation = atten
+	l.area_normalize_energy = true
+	l.area_size = size
+	l.area_range = rng
+	l.area_attenuation = atten
 	l.shadow_enabled = false        # every one of these was use_shadow=False
 	l.light_volumetric_fog_energy = 0.2
 	_attach(scene, l, pos_uu)
 	# look_at() needs the node inside a tree; nothing is, during import.
-	l.look_at_from_position(l.position, to_godot(aim_uu), Vector3.UP)
-
-
-func _omni(scene: Node, name: String, pos_uu: Vector3, colour: Color,
-		energy: float, rng: float, atten: float) -> void:
-	var l := OmniLight3D.new()
-	l.name = name
-	l.light_color = colour
-	l.light_energy = energy
-	l.omni_range = rng
-	l.omni_attenuation = atten
-	l.shadow_enabled = false
-	l.light_volumetric_fog_energy = 0.2
-	_attach(scene, l, pos_uu)
+	var target := to_godot(aim_uu)
+	# FILL points straight down, which is degenerate against +Y.
+	var up := Vector3.UP
+	if absf((target - l.position).normalized().y) > 0.999:
+		up = Vector3(0, 0, -1)
+	l.look_at_from_position(l.position, target, up)
 
 
 func _attach(scene: Node, l: Light3D, pos_uu: Vector3) -> void:

@@ -61,6 +61,43 @@ func _ready() -> void:
 	if i != -1 and i + 1 < args.size() and _env != null:
 		_env.tonemap_exposure *= float(args[i + 1])
 
+	i = args.find("--lights")
+	if i != -1 and i + 1 < args.size():
+		_scale_lights(args[i + 1])
+
+
+## `--lights BOWL=0.6,TEAM=1.3` scales the energy of every light whose node
+## name starts with the given prefix.
+##
+## Every light lives in the import script, so finding a level by editing it
+## costs a full reimport per guess. The groups are exactly the ones in
+## `_rebuild_area_lights` plus `FLOOD`, so a sweep over one group is one 25 s
+## capture per value, and the winner gets folded back into the import script.
+func _scale_lights(spec: String) -> void:
+	var mult := {}
+	for pair in spec.split(",", false):
+		var kv := pair.split("=")
+		if kv.size() == 2:
+			mult[kv[0].strip_edges()] = float(kv[1])
+
+	var scaled := 0
+	for n in _all_nodes(get_tree().current_scene):
+		if not (n is Light3D):
+			continue
+		for prefix in mult:
+			if n.name.begins_with(prefix):
+				n.light_energy *= mult[prefix]
+				scaled += 1
+				break
+	print("[lights] %s -> %d lights scaled" % [spec, scaled])
+
+
+func _all_nodes(n: Node, out: Array = []) -> Array:
+	out.append(n)
+	for c in n.get_children():
+		_all_nodes(c, out)
+	return out
+
 
 func _set_fog(scale: float) -> void:
 	if _env == null:
