@@ -501,6 +501,27 @@ apples-to-apples; the game ships with it on.
   car respawned frozen and immovable. `soak.gd` runs eight simulated minutes of
   random input and asserts nothing leaves the shell, goes NaN or breaks a cap.
 
+### What an adversarial review found afterwards
+
+The port was then read line by line against `src/` by a reviewer told to assume
+it was broken. Constants, signs and axes, tick ordering, stale caches, off-by-one
+comparisons and GDScript hazards all came back clean; five real faults did not:
+
+1. A match goal never came out of slow motion — `Engine.time_scale` went to 0.22
+   and the celebration timer, which Godot also scales, ticked at a fifth speed,
+   so 3.2 s took 14.5 real seconds. `Feel.MATCH_SLOWMO_RECOVER` had been
+   transcribed and then never referenced.
+2. The goal blast raised `y` on the raw displacement and normalised after, where
+   `Game.ts` normalises first. At 20 m that is a 1.3-degree lift instead of 24.
+3. The wheels span backwards.
+4. The shell's friction was 0.18 on every surface, because Godot combines
+   friction as `min(a, b)` and Rapier averages. 0.30 was picked by measurement:
+   mean car-position error over the contact-heavy scenarios 2.41 m -> 1.29 m.
+5. `soak.gd` was not deterministic — Godot randomises the global seed at startup
+   and both the kickoff spot and the bot draw from it.
+
+All five are fixed. Two of them (1 and 4) would have been felt.
+
 ### Still open
 
 - **Nobody has played it yet.** Section 8 is explicit that a human saying it
