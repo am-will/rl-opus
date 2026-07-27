@@ -192,12 +192,15 @@ func _fix_materials(mi: MeshInstance3D) -> void:
 		if m.resource_name == "CF_Turf":
 			mi.set_surface_override_material(i, _turf_material(m))
 			continue
+		# `visible_shadow = False` in Blender has no glTF equivalent, and every
+		# part of a pad carries it: a plume that casts a shadow puts a dark
+		# column on the pitch, and the plate is 1.5 cm of nothing that would
+		# only ever shadow itself.
+		if m.resource_name.begins_with("CF_Boost"):
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if m.resource_name in BOOST_MATERIALS:
 			mi.set_surface_override_material(
 				i, load(BOOST_MATERIALS[m.resource_name]))
-			# `visible_shadow = False` in Blender has no glTF equivalent, and a
-			# plume that casts a shadow puts a dark column on the pitch.
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			continue
 		if m.resource_name in TEAM_RAMPS:
 			mi.set_surface_override_material(
