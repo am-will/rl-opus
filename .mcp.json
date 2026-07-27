@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "blender-lab": {
+      "type": "stdio",
+      "command": "/opt/homebrew/bin/uv",
+      "args": [
+        "--directory",
+        "/Users/am.will/Applications/blender_mcp/mcp",
+        "run",
+        "blender-mcp"
+      ],
+      "env": {}
+    },
+    "unreal-mcp": {
+      "type": "http",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
