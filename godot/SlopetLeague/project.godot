@@ -22,7 +22,14 @@ window/size/viewport_height=900
 
 [physics]
 
+; Rocket League and RocketSim both step at 120 Hz. At Godot's default 60 a
+; 60 m/s ball travels a metre per step -- further than its own diameter --
+; and tunnels straight through the arena shell.
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=16
 3d/default_gravity=6.5
+3d/default_linear_damp=0.0
+3d/default_angular_damp=0.0
 
 [rendering]
 
