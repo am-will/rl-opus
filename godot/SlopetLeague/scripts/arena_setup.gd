@@ -51,7 +51,12 @@ func _ready() -> void:
 	if i != -1 and i + 1 < args.size():
 		_capture_path = args[i + 1]
 
-	var we := get_tree().current_scene.find_child("WorldEnvironment", true, false)
+	# The headless harnesses instantiate this scene by hand, so there may be no
+	# current_scene to search; the tree root always works.
+	var scene: Node = get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	var we := scene.find_child("WorldEnvironment", true, false)
 	if we is WorldEnvironment:
 		_env = we.environment
 		_fog_density = _env.volumetric_fog_density

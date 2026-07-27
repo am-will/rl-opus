@@ -348,6 +348,43 @@ const TEAM_BLUE := 0
 const TEAM_ORANGE := 1
 
 # ---------------------------------------------------------------------------
+# Surface response — Godot numbers, not RL ones
+# ---------------------------------------------------------------------------
+#
+# Rapier picks a restitution rule per collider (the ball asks for Max, so it
+# always bounces at its own 0.6) and averages friction. Godot has no per-pair
+# rule; measured on 4.7.1 + Jolt by tests/probe_material.gd it is
+#
+#     restitution = a + b        friction = min(a, b)
+#
+# so the raw config.ts values would have given the ball a restitution of 0.9 —
+# it rebounded at 13.7 m/s off a 15.2 m/s drop instead of the TS build's 9.1.
+# What follows is chosen so the COMBINED numbers land on what Rapier produces:
+#
+#   ball  vs any surface   0.5 + 0.1 = 0.60   (TS: Max(0.6, surface) = 0.60)
+#   car   vs any surface   0.1 + 0.1 = 0.20   (TS: avg -> 0.20 / 0.225 / 0.15)
+#   ball  vs car           0.5 + 0.1 = 0.60   (TS: Max(0.6, 0.1)     = 0.60)
+#   ball  vs floor  friction min(0.475, 0.6)   = 0.475  (TS avg = 0.475)
+#   ball  vs wall   friction min(0.475, 0.375) = 0.375  (TS avg = 0.375)
+#
+# The car's own shell stays slippery on purpose — tyre forces are simulated by
+# hand, so the box must slide along walls instead of catching on them.
+
+const SURF_BOUNCE := 0.1
+const BALL_BOUNCE_GODOT := 0.5
+const BALL_FRICTION_GODOT := 0.475
+const CAR_BOUNCE_GODOT := 0.1
+const CAR_FRICTION_GODOT := 0.18
+## surface name -> friction, chosen so min() with the ball's lands on the
+## average Rapier would have produced.
+const SURF_FRICTION := {
+	"CF_Floor": 0.6,
+	"CF_Walls": 0.375,
+	"CF_Ceiling": 0.375,
+	"CF_GoalPockets": 0.40,
+}
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

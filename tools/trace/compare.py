@@ -81,6 +81,16 @@ def main() -> int:
         help="override a tolerance; KEY is a channel name or 'all'. Repeatable.",
     )
     ap.add_argument("--ticks", type=int, default=0, help="compare only the first N ticks")
+    ap.add_argument(
+        "--spike-ticks",
+        type=int,
+        default=0,
+        help="ignore the N worst individual ticks per channel when deciding "
+             "pass/fail. A one-tick difference in WHEN a bounce lands shows up "
+             "as a velocity error of about twice the impact speed, and no "
+             "tolerance that survives that is measuring anything. The dropped "
+             "ticks are still reported as 'spike'.",
+    )
     ap.add_argument("--bucket", type=int, default=100, help="rows in the per-N-tick table (default 100)")
     ap.add_argument("--no-table", action="store_true", help="skip the per-bucket table")
     args = ap.parse_args()
@@ -116,16 +126,27 @@ def main() -> int:
     results = {}
     for ch in CHANNELS:
         errs = errors(ch, ra, rb)
-        first = next((i for i, e in enumerate(errs) if e > tol[ch]), None)
-        results[ch] = (errs, max(errs), sum(errs) / len(errs), first)
+        spikes = set()
+        if args.spike_ticks:
+            spikes = set(sorted(range(len(errs)), key=lambda i: -errs[i])[: args.spike_ticks])
+        first = next(
+            (i for i, e in enumerate(errs) if e > tol[ch] and i not in spikes), None
+        )
+        results[ch] = (errs, max(errs), sum(errs) / len(errs), first, spikes)
 
     print(f"{'channel':<8} {'tol':>8} {'max':>10} {'mean':>10}  {'first>tol':<10} unit")
     failed = []
-    for ch, (_, mx, mean, first) in results.items():
+    for ch, (errs, mx, mean, first, spikes) in results.items():
         mark = "-" if first is None else f"t={first}"
         if first is not None:
             failed.append(ch)
-        print(f"{ch:<8} {tol[ch]:>8.4f} {mx:>10.4f} {mean:>10.4f}  {mark:<10} {CHANNELS[ch][2]}")
+        note = ""
+        if spikes and mx > tol[ch]:
+            note = f"  (spike t={min(spikes, key=lambda i: -errs[i])} {mx:.3f} ignored)"
+        print(
+            f"{ch:<8} {tol[ch]:>8.4f} {mx:>10.4f} {mean:>10.4f}  {mark:<10} "
+            f"{CHANNELS[ch][2]}{note}"
+        )
 
     if not args.no_table:
         step = max(1, args.bucket)

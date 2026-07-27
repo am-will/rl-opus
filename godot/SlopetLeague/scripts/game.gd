@@ -26,6 +26,15 @@ const BALL_SCENE := preload("res://scenes/ball.tscn")
 ## Set by the headless harnesses: don't poll the keyboard, the caller writes
 ## `car.input` itself before each tick.
 var external_input := false
+## The trace harness turns these off so a scripted run isn't cut short by a
+## kickoff reset or given boost it didn't ask for.
+var enable_goals := true
+var enable_pads := true
+
+## Emitted once per physics tick, after the previous solver step has been
+## post-processed and before this tick's input is read. This is the exact point
+## the TypeScript recorder samples, so it is where the trace harness hooks in.
+signal post_step(dt: float)
 
 var ball: Ball
 var cars: Array[Car] = []
@@ -93,12 +102,7 @@ func _ready() -> void:
 ## suffixes those meshes with `-col`). All this does is put them on the arena
 ## layer and give them RL's surface response.
 func _prepare_arena() -> void:
-	var surfaces := {
-		"CF_Floor": [0.6, 0.3],
-		"CF_Walls": [0.4, 0.35],
-		"CF_Ceiling": [0.4, 0.35],
-		"CF_GoalPockets": [0.45, 0.2],
-	}
+	var surfaces := Feel.SURF_FRICTION
 	var found := 0
 	for name in surfaces.keys():
 		var mesh := _arena.find_child(name, true, false)
@@ -111,8 +115,8 @@ func _prepare_arena() -> void:
 				body.collision_layer = Layers.ARENA
 				body.collision_mask = 0
 				var mat := PhysicsMaterial.new()
-				mat.friction = surfaces[name][0]
-				mat.bounce = surfaces[name][1]
+				mat.friction = surfaces[name]
+				mat.bounce = Feel.SURF_BOUNCE
 				mat.absorbent = false
 				body.physics_material_override = mat
 				found += 1
@@ -155,11 +159,14 @@ func _physics_process(dt: float) -> void:
 		c.sync()
 
 	var live := phase == Phase.PLAYING
-	var active_cars: Array = cars.filter(func(c: Car) -> bool: return c.active)
-	pads.update(dt, active_cars)
+	if enable_pads:
+		var active_cars: Array = cars.filter(func(c: Car) -> bool: return c.active)
+		pads.update(dt, active_cars)
 	_update_demolitions()
-	if live:
+	if live and enable_goals:
 		_check_goal()
+
+	post_step.emit(dt)
 
 	# --- head of the next one ------------------------------------------------
 	if external_input:

@@ -52,9 +52,9 @@ const RAW = [
   {
     name: 'ball_drop',
     ticks: 600,
-    note: 'Ball dropped from 20 m onto the centre spot. Car parked inactive.',
+    note: 'Ball dropped onto the centre spot. 18 m, not 20: the ceiling is at 20.44 and a 0.9125 m ball centred at 20 starts INSIDE it, so both engines spent the opening ticks resolving penetration rather than falling. Car parked inactive.',
     car: { active: false, x: 0, z: 0, yaw: 0 },
-    ball: { p: [0, 20, 0], v: [0, 0, 0] },
+    ball: { p: [0, 18, 0], v: [0, 0, 0] },
     input: [],
   },
   {

@@ -20,38 +20,31 @@ config/icon="res://icon.svg"
 window/size/viewport_width=1600
 window/size/viewport_height=900
 
-[physics]
-
-; Rocket League and RocketSim both step at 120 Hz. At Godot's default 60 a
-; 60 m/s ball travels a metre per step -- further than its own diameter --
-; and tunnels straight through the arena shell.
-common/physics_ticks_per_second=120
-common/max_physics_steps_per_frame=16
-3d/default_gravity=6.5
-3d/default_linear_damp=0.0
-3d/default_angular_damp=0.0
-; Jolt is far closer to Rapier (the TypeScript build's solver) in character
-; than GodotPhysics3D is, especially for a sphere against a concave shell.
-3d/physics_engine="Jolt Physics"
-
 [layer_names]
 
 3d_physics/layer_1="arena"
 3d_physics/layer_2="car"
 3d_physics/layer_3="ball"
 
+[physics]
+
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=16
+3d/physics_engine="Jolt Physics"
+3d/default_gravity=6.5
+3d/default_linear_damp=0.0
+3d/default_angular_damp=0.0
+
 [rendering]
 
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
-lights_and_shadows/positional_shadow/atlas_size=8192
-anti_aliasing/quality/msaa_3d=2
-anti_aliasing/quality/use_taa=true
-environment/defaults/default_clear_color=Color(0.02, 0.03, 0.06, 1)
 environment/ssao/quality=3
 environment/ssil/quality=3
-environment/screen_space_reflection/roughness_quality=2
-; The floodlight beams are the whole point of the volumetrics here, and the
-; default 64^3 froxel grid smears them into soup at stadium scale.
+anti_aliasing/quality/msaa_3d=2
 environment/volumetric_fog/volume_size=160
 environment/volumetric_fog/volume_depth=160
+environment/defaults/default_clear_color=Color(0.02, 0.03, 0.06, 1)
+anti_aliasing/quality/use_taa=true
+lights_and_shadows/positional_shadow/atlas_size=8192
+environment/screen_space_reflection/roughness_quality=2

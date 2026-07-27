@@ -102,14 +102,26 @@ func _ready() -> void:
 	angular_damp = 0.04
 
 	# Tyre forces are simulated by hand below, so the shell itself is slippery.
+	# See the surface-response block in rl_feel.gd for why these are not simply
+	# config.ts's numbers.
 	var mat := PhysicsMaterial.new()
-	mat.friction = 0.18
-	mat.bounce = 0.1
+	mat.friction = Feel.CAR_FRICTION_GODOT
+	mat.bounce = Feel.CAR_BOUNCE_GODOT
 	mat.absorbent = false
 	physics_material_override = mat
 
 	collision_layer = Layers.CAR
 	collision_mask = Layers.ARENA | Layers.BALL | Layers.CAR
+
+	# Not (only) for the contact list: Jolt turns OFF manifold reduction for a
+	# body that reports contacts, and manifold reduction is what breaks wall
+	# driving. Entering the floor->wall fillet at 20 m/s, the reduced manifold
+	# collapsed contacts from several ramp facets into one bad normal and threw
+	# the car back down the pitch at -3.9 m/s — a clean e=0.2 bounce off a
+	# surface that isn't there. With reporting on, the car rides up the fillet
+	# and reaches the ceiling, matching the TS build's wall_ride trace.
+	contact_monitor = true
+	max_contacts_reported = 6
 
 	_ray.collision_mask = Layers.ARENA
 	_ray.collide_with_areas = false

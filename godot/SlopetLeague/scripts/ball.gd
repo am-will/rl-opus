@@ -24,12 +24,12 @@ func _ready() -> void:
 	custom_integrator = false
 	gravity_scale = 1.0
 
-	# Rapier averages restitution with whatever it hits, which would drag the
-	# bounce below RL's 0.6 on every surface; the TS build sets the combine rule
-	# to Max for the same reason. Godot's non-absorbent material combines as max.
+	# NOT the RL numbers: Godot adds the two restitutions and takes the min of
+	# the two frictions, so these are picked to make the COMBINED values land on
+	# RL's 0.6 / 0.475. See the surface-response block in rl_feel.gd.
 	var mat := PhysicsMaterial.new()
-	mat.bounce = Feel.BALL_RESTITUTION
-	mat.friction = Feel.BALL_FRICTION
+	mat.bounce = Feel.BALL_BOUNCE_GODOT
+	mat.friction = Feel.BALL_FRICTION_GODOT
 	mat.absorbent = false
 	mat.rough = false
 	physics_material_override = mat
