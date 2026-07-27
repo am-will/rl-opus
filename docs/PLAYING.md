@@ -24,6 +24,7 @@ Metal's twenty-five seconds.
 | `C` | ball cam / standard cam |
 | `R` | reset your car in front of the ball |
 | `T` | restart the match |
+| `N` | switch between free play and a 5:00 match |
 | `B` | infinite boost |
 | `M`, `=`, `-` | mute, volume up, volume down |
 | `H` | hide the controls panel |

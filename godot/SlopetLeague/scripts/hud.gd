@@ -97,7 +97,8 @@ func _ready() -> void:
 	_place(_controls, Vector2(0.0, 1.0), Vector2(232, -70), Vector2(440, 110))
 	_controls.text = "W/S drive    A/D steer    Space jump (twice = flip)\n" \
 		+ "Shift boost    Ctrl powerslide / air roll    Q/E air roll\n" \
-		+ "C ball cam    R reset car    T restart    B infinite boost\n" \
+		+ "C ball cam    R reset car    T restart    N free play / match\n" \
+		+ "B infinite boost    M mute    = - volume\n" \
 		+ "H hide this    F1 free camera    Esc quit"
 
 

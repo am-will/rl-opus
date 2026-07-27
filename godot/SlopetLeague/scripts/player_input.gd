@@ -37,6 +37,7 @@ const KEYS := {
 	"rl_camera": [KEY_C],
 	"rl_reset_car": [KEY_R],
 	"rl_restart": [KEY_T],
+	"rl_mode": [KEY_N],
 	"rl_menu": [KEY_ESCAPE],
 	"rl_infinite_boost": [KEY_B],
 	"rl_toggle_hud": [KEY_H],

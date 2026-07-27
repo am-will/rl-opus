@@ -432,6 +432,14 @@ func _handle_one_shots() -> void:
 		reset_player()
 	if Input.is_action_just_pressed("rl_restart"):
 		restart_match()
+	if Input.is_action_just_pressed("rl_mode"):
+		# Free play is the default because "drive around and hit the ball" is
+		# what you want on the first run; N is how you get a real match with a
+		# clock, a countdown and a celebration.
+		practice = not practice
+		restart_match()
+		if hud:
+			hud.toast("Free play" if practice else "5:00 match")
 	if Input.is_action_just_pressed("rl_infinite_boost"):
 		player_car.infinite_boost = not player_car.infinite_boost
 	if Input.is_action_just_pressed("rl_toggle_hud") and hud:
