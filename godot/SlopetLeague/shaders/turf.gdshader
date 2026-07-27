@@ -36,7 +36,17 @@ group_uniforms bump;
 uniform float clump_freq = 0.217;     // Blender scale 220 -> 0.46 m features
 uniform float blade_freq = 1.34;      // Blender scale 1400 -> 7 cm tufting
 uniform float blade_mix = 0.45;       // the Mix node's Factor
-uniform float bump_strength = 0.42;
+uniform float bump_strength = 0.42;   // the Bump node's Strength
+// The Bump node's Distance, and the reason this used to look like coral. It
+// is the height the 0..1 field stands for, in METRES -- so the fine octave's
+// gradient is about 13/m of height, 0.16 of slope, and under two degrees of
+// normal once Strength and the mix factor are in. Without it the field was
+// read as a metre of relief per unit and the pitch turned into a relief map.
+uniform float bump_distance = 0.012;
+// Central-difference step. Must resolve the 7 cm fine octave: at the old
+// 0.25 m the two taps landed three wavelengths apart and the "gradient" was
+// pure aliasing, which is what the coral pattern actually was.
+uniform float bump_epsilon = 0.01;
 
 group_uniforms roughness;
 uniform float rough_min = 0.66;       // Map Range To Min / To Max
@@ -70,13 +80,18 @@ void fragment() {
 	// Central differences on the height field, then perturb along the part of
 	// the gradient tangential to the surface -- which keeps working on the
 	// ramps up into the wall fillets, not just on the flat of the pitch.
-	float e = 0.25;
+	// Scaling by bump_distance turns the 0..1 field into metres of relief, so
+	// what comes out is a slope and `bump_strength` means what it means in
+	// Blender. The mip chain fades the fine octave with distance for free:
+	// far enough away both taps land in the same texel and the gradient goes
+	// to zero, which is exactly the right answer.
+	float e = bump_epsilon;
 	vec2 p = world_pos.xz;
 	float hx = height_at(p + vec2(e, 0.0)) - height_at(p - vec2(e, 0.0));
 	float hz = height_at(p + vec2(0.0, e)) - height_at(p - vec2(0.0, e));
-	vec3 grad = vec3(hx, 0.0, hz) / (2.0 * e);
+	vec3 grad = vec3(hx, 0.0, hz) * bump_distance / (2.0 * e);
 	grad -= world_normal * dot(grad, world_normal);
-	vec3 n = normalize(world_normal - grad * bump_strength * 12.0);
+	vec3 n = normalize(world_normal - grad * bump_strength);
 	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
 
 	// Roughness rides the coarse octave only, so whole clumps of grass catch

@@ -20,26 +20,62 @@ extends EditorScenePostImport
 ## `AreaLight3D`s -- see `_area` for why that is now possible and what it is
 ## worth.
 
-# --- floodlights ------------------------------------------------------------
-# The 18 spots do survive glTF; what does not survive is any sense of falloff.
+# --- Blender watts -> Godot light_energy -------------------------------------
 #
-# Godot's attenuation is not the curve it looks like. The shader computes
+# Every light in this scene has a wattage in `cf/lighting.py`. Those numbers
+# used to be discarded and each group given a hand-tuned energy and its own
+# attenuation exponent (1.0, 1.2, 2.0), which meant the BALANCE between groups
+# was arbitrary -- a fill light could be ten times its Blender share of the
+# frame and nothing would say so. The two conversions below replace that with
+# one derivation, so the relative levels are Blender's and only the absolute
+# level is ours.
+#
+# Godot's attenuation is also not the curve it looks like. The shader computes
 #
 #     window(d / range) * pow(d, -attenuation)
 #
-# so `spot_attenuation` is a decay exponent applied to the raw distance in
-# METRES, and `spot_range` only supplies a soft cutoff window. That matters
-# enormously at stadium scale: the floodlight ring sits 136-149 m from the
-# pitch centre and 74.5 m up, and at 148 m an exponent of 1.6 divides the
-# light by 3000. The old 0.6 lit the near boards and the far corner within
-# 20% of each other, which is why the bowl read flat; anything close to
-# physical needs the energy scaled up to match, hence the large number below.
-# 2.0 is true inverse-square, the same falloff Blender's 105 kW spots use.
-const FLOOD_ENERGY := 1650.0
+# so `attenuation` is a decay exponent applied to the raw distance in METRES
+# and `range` only supplies a soft cutoff window -- it is not the (1 - d/r)^k
+# curve it resembles. At stadium scale that is the whole ball game: the
+# floodlight ring sits 136-149 m out and 74.5 m up. 2.0 is true inverse square,
+# which is what Blender uses, so every light here now runs at 2.0 and the
+# energies are large to match.
+#
+# Measured on a white Lambertian plane in this build (see the calibration in
+# the session notes): a positional light's contribution is
+#
+#     albedo * N.L * energy * window * pow(d, -atten)
+#
+# with no 1/PI in the diffuse BRDF. Blender puts the 1/PI in, and defines lamp
+# power as radiated over the full sphere for POINT/SPOT and over the hemisphere
+# for AREA:
+#
+#     spot: E = P / (4*PI*d^2)      ->  energy = P / (4*PI^2)
+#     area: E = P / (PI*d^2)        ->  energy = P / PI^2
+#
+# The area figure carries one extra measured correction: an AreaLight3D with
+# area_normalize_energy on lands 0.9572x an OmniLight3D of the same energy in
+# the small-source limit, so the divisor is PI^2 * 0.9572.
+const W_TO_SPOT := 1.0 / (4.0 * PI * PI)          # 1 / 39.478
+const W_TO_AREA := 1.0 / (PI * PI * 0.9572)       # 1 / 9.4477
+
+# One knob for the whole rig. The conversion above fixes every RATIO; this is
+# the only number that is ours, and it exists because Blender's AgX sits on top
+# of real path-traced bounce that Godot has to reproduce some other way.
+const GAIN := 1.0
+
+const ATTEN := 2.0                # true inverse square, everywhere
+
+# --- floodlights ------------------------------------------------------------
+const FLOOD_WATTS := 1.05e5       # cf/lighting.py build(energy=1.05e5)
+const FLOOD_ENERGY := FLOOD_WATTS * W_TO_SPOT * GAIN
 const FLOOD_RANGE := 420.0
-const FLOOD_ATTEN := 2.0
 const FLOOD_FOG := 1.6            # beam contribution to the volumetric fog
-const SHADOW_FLOODS := 12         # of 18; multi-source shadowing is the look
+# cf/lighting.py sets use_shadow=True on every one of the 18. Leaving six of
+# them unshadowed does not just lose the sixfold shadow under the goal frame,
+# it adds light that should have been blocked -- which is brightness the rig
+# then has to be detuned to hide.
+const SHADOW_FLOODS := 18
 
 # --- emission ---------------------------------------------------------------
 # Blender ran the wall strips at 3.2 and the floodlight lenses at 26.0, at
@@ -86,7 +122,7 @@ func _post_import(scene: Node) -> Object:
 		if n is Light3D:
 			n.light_energy = FLOOD_ENERGY
 			if n is SpotLight3D:
-				n.spot_attenuation = FLOOD_ATTEN
+				n.spot_attenuation = ATTEN
 				n.spot_range = FLOOD_RANGE
 				n.shadow_bias = 0.06
 				n.shadow_normal_bias = 1.5
@@ -187,20 +223,37 @@ func _turf_noise() -> NoiseTexture2D:
 # 4.7 shipped `AreaLight3D`, so they are now ported as what they are, at
 # Blender's own dimensions. `_area` documents the units.
 
-# Blender energies (W) and shapes, read straight from cf/lighting.py. Kept as
-# named constants so the two files can be diffed by eye.
+# Blender wattages and shapes, read straight from cf/lighting.py. Kept as
+# named constants so the two files can be diffed by eye, and converted through
+# W_TO_AREA rather than replaced with a tuned number.
 const FILL_SIZE := Vector2(124.07, 124.07)   # 140 m DISK, as an equal-area rect
 const TEAM_SIZE := Vector2(90.0, 26.0)
 const BOWL_SIZE := Vector2(34.0, 14.0)
 const COVE_SIZE := Vector2(60.0, 10.0)
 const EXT_SIZE := Vector2(160.0, 160.0)
 
+const FILL_WATTS := 7.0e3
+const TEAM_WATTS := 1.5e4
+const BOWL_WATTS := 1.5e4
+const COVE_WATTS := 5.0e3
+const EXT_WATTS := 6.0e4
+
+# `range` is only a cutoff window, and it bites earlier than it looks: at
+# d = 0.7 * range the window is already 0.58. These are set to roughly three
+# times each light's working distance so the falloff is the exponent's, not
+# the window's.
+const FILL_RANGE := 400.0
+const TEAM_RANGE := 400.0
+const BOWL_RANGE := 300.0
+const COVE_RANGE := 300.0
+const EXT_RANGE := 1200.0
+
 
 func _rebuild_area_lights(scene: Node) -> void:
 	# FILL: a 140 m disk 72 m up, pointing straight down -- cf/lighting.py
 	# never calls _aim on it, so it keeps a Blender light's default -Z.
 	_area(scene, "FILL", Vector3(0, 0, CEIL_Z + 5200), Vector3(0, 0, 0),
-		Color(0.86, 0.91, 1.0), 8.0, FILL_SIZE, 300.0, 1.0)
+		Color(0.86, 0.91, 1.0), FILL_WATTS, FILL_SIZE, FILL_RANGE)
 
 	# TEAM: 90 x 26 rectangles at each end, aimed back at the pitch. This is
 	# what tints the two halves. Blue defends Blender -Y, which is Godot +Z.
@@ -208,7 +261,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 		var col := BLUE_HOT if sy < 0.0 else ORANGE_HOT
 		_area(scene, "TEAM_%d" % int(sy),
 			Vector3(0, sy * (BACK_Y + 1400), 2600), Vector3(0, sy * 1200, 0),
-			col, 19.0, TEAM_SIZE, 200.0, 1.0)
+			col, TEAM_WATTS, TEAM_SIZE, TEAM_RANGE)
 
 	# BOWL: ten strips on the lower-tier lip, aimed up and out across the
 	# seating. The pitch fill has to stay low for contrast, so the crowd needs
@@ -217,7 +270,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 		var p: Vector2 = BOWL_RING[b]
 		_area(scene, "BOWL_%d" % b,
 			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.9, p.y * 1.9, 4200),
-			Color(1.0, 0.96, 0.90), 60.0, BOWL_SIZE, 150.0, 1.2)
+			Color(1.0, 0.96, 0.90), BOWL_WATTS, BOWL_SIZE, BOWL_RANGE)
 
 	# COVE: under-roof strips that separate the bowl from the night sky.
 	for sy in [-1.0, 1.0]:
@@ -225,7 +278,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 			_area(scene, "COVE_%d%d" % [int(sx), int(sy)],
 				Vector3(sx * 5600, sy * 6200, 7000),
 				Vector3(sx * 1800, sy * 2200, 1200),
-				Color(0.92, 0.94, 1.0), 16.0, COVE_SIZE, 160.0, 1.0)
+				Color(0.92, 0.94, 1.0), COVE_WATTS, COVE_SIZE, COVE_RANGE)
 
 	# EXT: top light on the roof so the bowl reads from outside. Only the
 	# aerial shot ever sees these.
@@ -234,7 +287,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 			_area(scene, "EXT_%d%d" % [int(sx), int(sy)],
 				Vector3(sx * 12000, sy * 14000, 26000),
 				Vector3(sx * 8600, sy * 10400, 9900),
-				Color(0.62, 0.72, 1.0), 95.0, EXT_SIZE, 600.0, 1.0)
+				Color(0.62, 0.72, 1.0), EXT_WATTS, EXT_SIZE, EXT_RANGE)
 
 
 ## A Blender area light, ported as an area light.
@@ -257,16 +310,15 @@ func _rebuild_area_lights(scene: Node) -> void:
 ## total power scaling with area -- also measured, also correct, but a
 ## different unit and not the one the rest of this file speaks.
 func _area(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
-		colour: Color, energy: float, size: Vector2, rng: float,
-		atten: float) -> void:
+		colour: Color, watts: float, size: Vector2, rng: float) -> void:
 	var l := AreaLight3D.new()
 	l.name = name
 	l.light_color = colour
-	l.light_energy = energy
+	l.light_energy = watts * W_TO_AREA * GAIN
 	l.area_normalize_energy = true
 	l.area_size = size
 	l.area_range = rng
-	l.area_attenuation = atten
+	l.area_attenuation = ATTEN
 	l.shadow_enabled = false        # every one of these was use_shadow=False
 	l.light_volumetric_fog_energy = 0.2
 	_attach(scene, l, pos_uu)

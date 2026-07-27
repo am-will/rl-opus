@@ -7,6 +7,12 @@
 # (the harness renders 45 frames so TAA and glow settle, then quits).
 # Defaults to the three shots that read the lighting best.
 #
+# Volumetric fog defaults OFF here because it ships off. It used to default to
+# 1.0, which meant every measurement in this directory was of a configuration
+# nobody would ever see -- and the fog is blue, so it was quietly holding the
+# boards up by ~14/255 and adding most of their apparent saturation. `FOG=1
+# capture_godot.sh ...` still turns it on.
+#
 # Metal, not Vulkan: MoltenVK here cannot persist Godot's pipeline cache
 # ("Error writing pipeline cache data"), so every Vulkan run recompiles every
 # shader from scratch and a single capture takes ~9 minutes. The same capture
@@ -38,7 +44,7 @@ fi
 for shot in "${shots[@]}"; do
 	png="$out/${tag}_${shot}.png"
 	godot --path "$proj" --rendering-driver metal -- \
-		--capture "$png" --shot "$shot" --fog "${FOG:-1.0}" 2>&1 |
+		--capture "$png" --shot "$shot" --fog "${FOG:-0}" 2>&1 |
 		grep -Ev '^$|mvk-error|Godot Engine|Vulkan 1' || true
 	echo "[shot] $png"
 done

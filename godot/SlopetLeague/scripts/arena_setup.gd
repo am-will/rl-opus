@@ -61,9 +61,30 @@ func _ready() -> void:
 	if i != -1 and i + 1 < args.size() and _env != null:
 		_env.tonemap_exposure *= float(args[i + 1])
 
+	# Godot's sky ambient is unoccluded: it lights the inside of a closed bowl
+	# exactly as much as the open roof. Blender's world is the same blue night
+	# sky, but EEVEE occludes it, so the boards there are near-black where
+	# here they pick up a blue cast. Until baked GI supplies the indirect this
+	# is standing in for, the honest move is to turn it down.
+	i = args.find("--ambient")
+	if i != -1 and i + 1 < args.size() and _env != null:
+		var a := float(args[i + 1])
+		if a <= 0.0:
+			_env.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
+		else:
+			_env.ambient_light_energy *= a
+			_env.ambient_light_sky_contribution *= a
+		print("[ambient] x%.2f -> source=%d energy=%.3f sky=%.3f" % [
+			a, _env.ambient_light_source, _env.ambient_light_energy,
+			_env.ambient_light_sky_contribution])
+
 	i = args.find("--lights")
 	if i != -1 and i + 1 < args.size():
 		_scale_lights(args[i + 1])
+
+	i = args.find("--env")
+	if i != -1 and i + 1 < args.size():
+		_set_env(args[i + 1])
 
 
 ## `--lights BOWL=0.6,TEAM=1.3` scales the energy of every light whose node
@@ -90,6 +111,27 @@ func _scale_lights(spec: String) -> void:
 				scaled += 1
 				break
 	print("[lights] %s -> %d lights scaled" % [spec, scaled])
+
+
+## `--env ssil_enabled=false,glow_intensity=0.4` sets Environment properties
+## directly, so a hypothesis about the grade costs one capture rather than an
+## edit to arena.tscn. Values parse as bool, then float, then string.
+func _set_env(spec: String) -> void:
+	if _env == null:
+		return
+	for pair in spec.split(",", false):
+		var kv := pair.split("=")
+		if kv.size() != 2:
+			continue
+		var key := kv[0].strip_edges()
+		var raw := kv[1].strip_edges()
+		var val: Variant = raw
+		if raw == "true" or raw == "false":
+			val = raw == "true"
+		elif raw.is_valid_float():
+			val = float(raw)
+		_env.set(key, val)
+		print("[env] %s = %s (now %s)" % [key, val, _env.get(key)])
 
 
 func _all_nodes(n: Node, out: Array = []) -> Array:
