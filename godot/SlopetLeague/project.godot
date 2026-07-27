@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Slopet League - Champions Field"
-run/main_scene="res://scenes/arena.tscn"
+run/main_scene="res://scenes/game.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -30,6 +30,15 @@ common/max_physics_steps_per_frame=16
 3d/default_gravity=6.5
 3d/default_linear_damp=0.0
 3d/default_angular_damp=0.0
+; Jolt is far closer to Rapier (the TypeScript build's solver) in character
+; than GodotPhysics3D is, especially for a sphere against a concave shell.
+3d/physics_engine="Jolt Physics"
+
+[layer_names]
+
+3d_physics/layer_1="arena"
+3d_physics/layer_2="car"
+3d_physics/layer_3="ball"
 
 [rendering]
 

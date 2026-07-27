@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://1ssj1rapw0to"]
+
+[ext_resource type="Script" path="res://scripts/car.gd" id="1_car"]
+[ext_resource type="PackedScene" path="res://assets/octane.glb" id="2_octane"]
+
+[sub_resource type="BoxShape3D" id="CarShape_1"]
+size = Vector3(0.842, 0.3616, 1.5931350)
+
+[node name="Car" type="RigidBody3D"]
+mass = 180.0
+script = ExtResource("1_car")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CarShape_1")
+
+[node name="Model" parent="." instance=ExtResource("2_octane")]
+transform = Transform3D(0, 0, -0.53048, 0, 0.53048, 0, 0.53048, 0, 0, 0, -0.212915, 0)
