@@ -23,6 +23,8 @@ const BALL_SCENE := preload("res://scenes/ball.tscn")
 @export var arena_root_name := "ChampionsField"
 ## Free play: no clock, no countdown, goals reset the ball and nothing else.
 @export var practice := true
+## Opponent difficulty, 0..1. 0.5 is "Pro" from BOT_SKILLS in src/config.ts.
+@export_range(0.0, 1.0, 0.01) var bot_skill := 0.5
 ## Set by the headless harnesses: don't poll the keyboard, the caller writes
 ## `car.input` itself before each tick.
 var external_input := false
@@ -39,6 +41,8 @@ signal post_step(dt: float)
 var ball: Ball
 var cars: Array[Car] = []
 var player_car: Car
+var bot_car: Car
+var bot: Bot
 var cam: ChaseCamera
 var pads := BoostPads.new()
 var hud: HUD
@@ -53,7 +57,9 @@ var last_scorer := -1
 
 var _input := PlayerInput.new()
 var _player_intent := CarInput.new()
+var _bot_intent := CarInput.new()
 var _empty_intent := CarInput.new()
+var _role_timer := 0.0
 var _arena: Node3D
 var _fly_cam: Camera3D
 var _free_cam := false
@@ -74,6 +80,10 @@ func _ready() -> void:
 	_attach_ball_mesh()
 
 	player_car = _spawn_car(Feel.TEAM_BLUE)
+
+	bot_car = _spawn_car(Feel.TEAM_ORANGE)
+	# Blue defends -z and attacks +z; orange is the mirror image.
+	bot = Bot.new(bot_car, Feel.ARENA_HALF_LENGTH, -Feel.ARENA_HALF_LENGTH, bot_skill)
 
 	cam = ChaseCamera.new()
 	cam.name = "ChaseCamera"
@@ -174,6 +184,7 @@ func _physics_process(dt: float) -> void:
 	elif live:
 		_input.poll(_player_intent)
 		player_car.input.copy_from(_player_intent)
+		_drive_bots(dt)
 	else:
 		# Cars are frozen during the countdown and the goal replay, but the
 		# world still settles.
@@ -189,6 +200,36 @@ func _physics_process(dt: float) -> void:
 	_prev_ball_vel = ball.vel
 
 
+## Roles are re-decided on a timer rather than every step: at 120 Hz the closest
+## car flips back and forth during a challenge and the bots dither on the spot.
+func _drive_bots(dt: float) -> void:
+	if bot == null:
+		return
+	_role_timer -= dt
+	if _role_timer <= 0.0:
+		_role_timer = 0.25
+		_assign_roles()
+	if not bot_car.active:
+		return
+	bot.update(dt, ball, pads, _bot_intent)
+	bot_car.input.copy_from(_bot_intent)
+
+
+## Closest car on the side takes the ball; the rest hold a support position.
+func _assign_roles() -> void:
+	var closest: Car = null
+	var best := INF
+	for c in cars:
+		if not c.active or c.team != bot_car.team:
+			continue
+		var d := c.pos.distance_squared_to(ball.pos)
+		if d < best:
+			best = d
+			closest = c
+	# Alone on its side there is nobody to support, so it always attacks.
+	bot.role = Bot.Role.SUPPORT if closest != null and closest != bot_car else Bot.Role.ATTACK
+
+
 func _update_demolitions() -> void:
 	for c in cars:
 		if not c.wrecked or c.demo_timer > 0.0:
@@ -202,6 +243,9 @@ func _update_demolitions() -> void:
 		)
 		if c == player_car and cam:
 			cam.snap(c, ball)
+		if c == bot_car and bot:
+			# Every timer it was holding describes a wreck that no longer exists.
+			bot.reset()
 
 	for i in cars.size():
 		for j in range(i + 1, cars.size()):
@@ -306,6 +350,12 @@ func kickoff() -> void:
 	ball.reset()
 	pads.reset()
 	Engine.time_scale = 1.0
+	if bot:
+		bot.reset()
+	# The harnesses compare one car against a TS oracle that benches every racer
+	# it isn't recording, so the opponent has to be out of the world there too.
+	if external_input and bot_car:
+		bot_car.set_active(false)
 	if cam:
 		cam.snap(player_car, ball)
 
