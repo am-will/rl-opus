@@ -7,10 +7,21 @@ The arena already has this (`tools/champions_field_opus/export_godot.py`); the c
 did not. Three things have to happen on the way out, none of which the .blend
 should be permanently changed for:
 
-1. **Scale.** The assembled model is ~3.5 Blender units nose to wing. The arena is
-   built at Rocket League scale, where 1 uu = 1 cm and the Octane's hitbox is
-   118.01 uu = 1.1801 m long (`cf/const.py` cites the same RLBot tables). Exported
-   raw, the car arrives about three times too big for the pitch.
+1. **Scale.** The arena is built at Rocket League scale, where 1 uu = 1 cm, and
+   exported raw the car arrives about three times too big for the pitch.
+
+   Scaling by the *wheelbase* rather than the bounding box, because the wheel
+   contact points are the physically meaningful landmark -- they are where the
+   suspension raycasts touch the ground -- while the bounding box includes the
+   rear wing's overhang, which no RL measurement accounts for. Matching the
+   bounding box to the hitbox length undersized the car by about 18%: visibly
+   loose inside its own hitbox, and small next to the ball.
+
+   Worth recording: the widely-quoted Octane hitbox of 118.01 x 84.20 x 36.16
+   is wrong. RocketSim's CarConfig.cpp documents why -- Rocket League's own
+   GetLocalCollisionExtent() returns values slightly larger than the simulation
+   uses, and only 120.507 x 86.6994 x 38.6591 reproduces the real inertia
+   matrix. The wheelbase used here, 85.0 uu, comes from the same source.
 
 2. **Orientation.** The assembly puts the nose along Blender -X. Godot's convention
    is that forward is -Z, and glTF's Y-up conversion maps Blender (x, y, z) to
