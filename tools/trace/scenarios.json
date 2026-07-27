@@ -1,0 +1,610 @@
+{
+  "version": 1,
+  "tickRate": 120,
+  "dt": 0.008333333333333333,
+  "generatedBy": "tools/trace/record_ts.mjs (from scenarios.mjs)",
+  "inputModel": "Per tick, start from inputDefaults; the LAST segment with fromTick <= tick < toTick replaces it wholesale.",
+  "inputDefaults": {
+    "throttle": 0,
+    "steer": 0,
+    "pitch": 0,
+    "roll": 0,
+    "jump": false,
+    "boost": false,
+    "drift": false
+  },
+  "carSpawnY": 0.21,
+  "scenarios": [
+    {
+      "name": "ball_drop",
+      "ticks": 600,
+      "note": "Ball dropped from 20 m onto the centre spot. Car parked inactive.",
+      "car": {
+        "active": false,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          0,
+          20,
+          0
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": []
+    },
+    {
+      "name": "ball_wall",
+      "ticks": 900,
+      "note": "Ball rolled at the +x wall at 15 m/s; bounces off the fillet and comes back. Car parked inactive (it would otherwise start inside the ball).",
+      "car": {
+        "active": false,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          0,
+          0.9325,
+          0
+        ],
+        "v": [
+          15,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": []
+    },
+    {
+      "name": "throttle",
+      "ticks": 900,
+      "note": "Throttle-only run to top speed (~14.1 m/s). Reaches the far goal mouth around tick 590 — ticks past that are contact-dominated.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 900,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "throttle_turn",
+      "ticks": 900,
+      "note": "Full-lock turn under throttle. Exercises the speed-dependent steer curve as the car accelerates into the circle.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 900,
+          "throttle": 1,
+          "steer": 1,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "boost_straight",
+      "ticks": 900,
+      "note": "Boost from rest to the supersonic cap. Started at z=-45 so the run is ~96 m; enters the far goal around tick 640.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": -45,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": true
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 900,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": true,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "brake_reverse",
+      "ticks": 900,
+      "note": "Accelerate for 300 ticks, then full reverse — brake phase then the reverse speed cap (half maxDriveSpeed).",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 300,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": false
+        },
+        {
+          "fromTick": 300,
+          "toTick": 900,
+          "throttle": -1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "powerslide",
+      "ticks": 720,
+      "note": "Accelerate for 240 ticks, then powerslide into a turn — driftGripAccel and driftDrag.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 240,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": false
+        },
+        {
+          "fromTick": 240,
+          "toTick": 720,
+          "throttle": 1,
+          "steer": 1,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": false,
+          "drift": true
+        }
+      ]
+    },
+    {
+      "name": "jump",
+      "ticks": 400,
+      "note": "Idle 30 ticks, jump held 24 ticks (0.2 s = CAR.jump.maxHold), then release.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 30,
+          "toTick": 54,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "double_jump",
+      "ticks": 400,
+      "note": "Jump tap at 30, second tap at 90 with no stick — a straight second jump, not a flip.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 30,
+          "toTick": 36,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        },
+        {
+          "fromTick": 90,
+          "toTick": 96,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "front_flip",
+      "ticks": 400,
+      "note": "Jump tap at 30, then a tap with pitch=+1 at 90 — forward dodge (dz drives the pitch axis).",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 30,
+          "toTick": 36,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        },
+        {
+          "fromTick": 90,
+          "toTick": 96,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 1,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "side_flip",
+      "ticks": 400,
+      "note": "Jump tap at 30, then a tap with steer=+1 at 90 — side dodge (dx drives the roll axis).",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": 0,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 30,
+          "toTick": 36,
+          "throttle": 0,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        },
+        {
+          "fromTick": 90,
+          "toTick": 96,
+          "throttle": 0,
+          "steer": 1,
+          "pitch": 0,
+          "roll": 0,
+          "jump": true,
+          "boost": false,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "wall_ride",
+      "ticks": 900,
+      "note": "Car at x=20 facing +x on boost, drives into the +x wall, up the ramp fillet and onto the wall.",
+      "car": {
+        "active": true,
+        "x": 20,
+        "z": 0,
+        "yaw": 1.5707963267948966,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": true
+      },
+      "ball": {
+        "p": [
+          30,
+          0.9325,
+          45
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 900,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": true,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "ball_hit",
+      "ticks": 400,
+      "note": "Car at z=-8 facing +z, throttle + finite boost into a resting ball — straight-on Psyonix impulse.",
+      "car": {
+        "active": true,
+        "x": 0,
+        "z": -8,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          0,
+          0.9325,
+          0
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 400,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": true,
+          "drift": false
+        }
+      ]
+    },
+    {
+      "name": "ball_hit_offset",
+      "ticks": 400,
+      "note": "Same as ball_hit but the car is offset to x=0.6, so it strikes off-centre and the ball leaves at an angle.",
+      "car": {
+        "active": true,
+        "x": 0.6,
+        "z": -8,
+        "yaw": 0,
+        "y": 0.21,
+        "boost": 34,
+        "infiniteBoost": false
+      },
+      "ball": {
+        "p": [
+          0,
+          0.9325,
+          0
+        ],
+        "v": [
+          0,
+          0,
+          0
+        ]
+      },
+      "boostPads": false,
+      "input": [
+        {
+          "fromTick": 0,
+          "toTick": 400,
+          "throttle": 1,
+          "steer": 0,
+          "pitch": 0,
+          "roll": 0,
+          "jump": false,
+          "boost": true,
+          "drift": false
+        }
+      ]
+    }
+  ]
+}
