@@ -46,6 +46,8 @@ var bot: Bot
 var cam: ChaseCamera
 var pads := BoostPads.new()
 var hud: HUD
+## Null headless and under the harnesses — see GameAudio.is_enabled().
+var audio: GameAudio
 
 var phase: Phase = Phase.COUNTDOWN
 var score := [0, 0]
@@ -98,6 +100,14 @@ func _ready() -> void:
 	hud = HUD.new()
 	hud.name = "HUD"
 	add_child(hud)
+
+	# A scripted run must sound like nothing at all, so the trace suite and the
+	# screenshot harness never see an audio node.
+	if not external_input and GameAudio.is_enabled():
+		audio = GameAudio.new()
+		audio.name = "GameAudio"
+		add_child(audio)
+		post_step.connect(_audio_post_step)
 
 	kickoff()
 	if practice:
@@ -263,6 +273,8 @@ func _update_demolitions() -> void:
 
 
 func _demolish(victim: Car) -> void:
+	if audio:
+		audio.explode()
 	victim.set_active(false)
 	victim.wrecked = true
 	victim.demo_timer = Feel.DEMO_RESPAWN_DELAY
@@ -289,6 +301,8 @@ func _check_goal() -> void:
 
 
 func _on_goal(scorer: int) -> void:
+	if audio:
+		audio.goal()
 	score[scorer] += 1
 	last_scorer = scorer
 	if practice:
@@ -375,6 +389,8 @@ func restart_match() -> void:
 	overtime = false
 	phase = Phase.PLAYING if practice else Phase.COUNTDOWN
 	kickoff()
+	if audio:
+		audio.whistle()
 
 
 # ---------------------------------------------------------------------------
@@ -384,6 +400,12 @@ func restart_match() -> void:
 func _process(dt: float) -> void:
 	_handle_one_shots()
 	_advance_clock(dt)
+	if audio:
+		# Phases are passed in rather than read back out, so game_audio.gd never
+		# has to name this script's enum.
+		audio.on_frame(
+			self, dt, phase == Phase.COUNTDOWN, phase == Phase.PLAYING, countdown
+		)
 
 	for c in cars:
 		c.sync()
@@ -414,6 +436,31 @@ func _handle_one_shots() -> void:
 		_toggle_free_cam()
 	if Input.is_action_just_pressed("rl_menu"):
 		get_tree().quit()
+	if audio:
+		if Input.is_action_just_pressed("rl_mute"):
+			var m := audio.toggle_mute()
+			if hud:
+				hud.toast("Sound off" if m else "Sound on")
+		var step := 0
+		if Input.is_action_just_pressed("rl_volume_up"):
+			step = 1
+		elif Input.is_action_just_pressed("rl_volume_down"):
+			step = -1
+		if step != 0:
+			var pct := audio.change_volume(step)
+			# A blip at the new level is the only way to hear where you landed.
+			audio.ui_tick(true)
+			if hud:
+				hud.toast("Volume %d%%" % pct)
+
+
+## `post_step` fires after the solver has been post-processed and before the
+## next tick's `car.tick` clears the one-frame flags, which is the one moment
+## where the ball impact, the jump/flip/land flags and the pad events are all
+## readable at once.
+func _audio_post_step(_dt: float) -> void:
+	if audio:
+		audio.on_post_step(self)
 
 
 func _toggle_free_cam() -> void:

@@ -42,6 +42,9 @@ const KEYS := {
 	"rl_toggle_hud": [KEY_H],
 	"rl_free_cam": [KEY_F1],
 	"rl_ball_cam": [KEY_C],
+	"rl_mute": [KEY_M],
+	"rl_volume_up": [KEY_EQUAL, KEY_KP_ADD],
+	"rl_volume_down": [KEY_MINUS, KEY_KP_SUBTRACT],
 }
 
 ## Standard-mapping pad defaults, laid out like Rocket League on an Xbox pad:
