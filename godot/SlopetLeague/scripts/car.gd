@@ -357,6 +357,11 @@ func set_active(a: bool) -> void:
 		is_boosting = false
 		supersonic = false
 		sync()
+	# The TS build lets a parked car keep falling; here that runs it into Jolt's
+	# 500 m/s ceiling within seconds and shows up in every soak report. Freezing
+	# is unobservable in play and keeps the numbers honest.
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	freeze = not a
 
 
 # ---------------------------------------------------------------------------
