@@ -96,6 +96,21 @@ const PLANS := {
 			{"tick": 100, "name": "18_goal"},
 		],
 	},
+	# A live match rather than free play, so the scoreboard has a clock, a score
+	# and a countdown on it. The HUD is most of what these frames are for.
+	"hud": {
+		"match": true,
+		"score": [3, 2],
+		"clock": 47.0,
+		"spawn": {"x": 0.0, "z": -30.0, "yaw": 0.0, "boost": 63.0},
+		"ball": {"p": [0.0, 5.5, -6.0], "v": [3.0, 6.0, 4.0]},
+		"input": [{"from": 0, "to": 400, "throttle": 1.0, "boost": true}],
+		"shots": [
+			{"tick": 2, "name": "21_countdown"},
+			{"tick": 60, "name": "22_hud"},
+			{"tick": 150, "name": "23_hud"},
+		],
+	},
 	# Static three-quarter look at the car beside the ball, for judging scale.
 	"scale": {
 		"spawn": {"x": 3.4, "z": 0.0, "yaw": PI * 0.5, "boost": 100.0},
@@ -134,6 +149,8 @@ func _initialize() -> void:
 	_game = ps.instantiate() as Game
 	_game.external_input = true
 	_game.enable_goals = bool(_plan.get("goals", false))
+	# Read by Game._ready, so it has to be set before the node enters the tree.
+	_game.practice = not bool(_plan.get("match", false))
 	root.add_child(_game)
 
 
@@ -160,6 +177,10 @@ func _setup() -> void:
 	_game.ball.reset(
 		Vector3(bp[0], bp[1], bp[2]), Vector3(bv[0], bv[1], bv[2])
 	)
+	if _plan.has("score"):
+		_game.score = (_plan["score"] as Array).duplicate()
+	if _plan.has("clock"):
+		_game.clock = float(_plan["clock"])
 	if _plan.has("camera"):
 		var cs: Dictionary = _plan["camera"]
 		_static_cam = Camera3D.new()
