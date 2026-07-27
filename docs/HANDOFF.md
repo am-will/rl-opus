@@ -243,6 +243,17 @@ it resembles. At the floodlight ring's 136–149 m throw this is the difference
 between a flat bowl and a lit one. This is why the energies in
 `arena_post_import.gd` are in the thousands.
 
+**`arena.ring` is not evenly sampled.** It plants NF+1 = 15 points on each
+corner fillet and only NS = 10 along a whole straight run, so a step is 211 uu
+round a corner and 679 uu on a straight — 6.4x at the extremes. Anything with a
+graphic on it that spans a fixed *number of samples* and spreads U evenly over
+them will stretch by that factor mid-word. This is what made the hero banners
+read like a funhouse mirror. Span by arc length with `arena.ring_span` instead;
+`_walls` and the wall texture were always arc-length-parameterised, which is why
+the wall graphics were fine while the banners were not. The `banner` shot in
+`shot_cameras.gd` looks square-on at one panel, on its own normal, so any
+remaining stretch is the mapping and not the viewing angle.
+
 **glTF carries no node graphs.** Anything driven by a ColorRamp, mask or noise in
 Blender arrives flat: the turf's bump and roughness, the ball's colour, the car's
 paint. Bake it in Blender or reimplement it as a shader. This is not a Godot

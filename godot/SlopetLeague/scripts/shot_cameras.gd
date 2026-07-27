@@ -28,6 +28,9 @@ const SHOTS := {
 	# Not a Blender shot. A long lens straight at the centre spot, for judging
 	# car size against the ball without perspective doing the arguing.
 	"scale":     [Vector3(0, -1150, 130),       Vector3(0, 0, 75),       42.0, 0.0],
+	# Square-on to one hero banner, on its own normal, so any stretch in the
+	# wordmark is the UV mapping and not the angle it is being read at.
+	"banner":    [Vector3(1995, -3032, 2450),   Vector3(2313, -8223, 3340), 50.0, 0.0],
 }
 
 
