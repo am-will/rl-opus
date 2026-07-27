@@ -3,7 +3,11 @@
 Branch `godot-fidelity`. Everything before this work is tagged `godot-flat-baseline`;
 `git checkout godot-flat-baseline` reverts the lot.
 
-Two documents matter: this one for where things stand and what to do next, and
+**If you are picking up physics or gameplay work, read
+`docs/PHYSICS_PARITY_HANDOFF.md` first** — it is the current plan and it
+supersedes the "Then: physics" section below.
+
+Two documents matter for the visual pass: this one for where things stand, and
 `docs/GODOT_FIDELITY_HANDOFF.md` for the itemised record of the first visual pass
 and the engine gotchas behind it. That document is superseded in places — it
 predates `AreaLight3D` and its numbers were measured with fog on; read "The
@@ -196,8 +200,27 @@ marked as such. Harmless and useful.
 
 ## Then: physics
 
-The user chose **match RocketSim numerically** over hand-tuning, explicitly. Do not
-tune constants by feel; fix them against the source.
+**Superseded — read `docs/PHYSICS_PARITY_HANDOFF.md` instead.** That document is
+the current plan and this section is kept only so the change of direction is
+visible.
+
+Two things here are now wrong:
+
+- *"The user chose match RocketSim numerically over hand-tuning."* Superseded.
+  The user has since said the TypeScript build in `src/` feels very close to the
+  real game and that reaching **that** is the goal. `src/config.ts` is explicitly
+  part-RL and part-hand-tuned, and it is now the source of truth for feel.
+- *"All constants are in `scripts/rl_const.gd` already."* True, but the plan
+  below reimplements the car from those constants, which would discard the
+  tuning that already landed. The current plan **ports `src/physics/` to
+  GDScript** instead: the Rapier dependency is five calls wide, and the two
+  arenas are already the same shape from the same numbers.
+
+The ordering below is still roughly right and the notes on the ball, the goal
+pockets and the boost-pad table are still accurate.
+
+<details>
+<summary>Superseded plan</summary>
 
 Order:
 
@@ -216,6 +239,8 @@ Order:
 
 **User preference on record:** no scripted player assists. Give the player controls
 to escape bad states; never auto-correct their car for them.
+
+</details>
 
 ---
 
