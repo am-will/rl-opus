@@ -101,6 +101,31 @@ const CUTOUT_MATERIALS := ["CF_Wall", "CF_Ceiling", "CF_GoalNet"]
 
 const BLUE_HOT := Color(0.35, 0.72, 1.00)
 const ORANGE_HOT := Color(1.00, 0.66, 0.24)
+const BLUE := Color(0.043, 0.353, 1.000)      # cf/const.py
+const ORANGE := Color(1.000, 0.353, 0.043)
+
+# Materials whose colour is a ColorRamp on world Y in Blender. glTF collapses
+# each of them to flat white, so they are rebuilt on shaders/team_ramp.gdshader
+# with cf/const.py's own values. `blend` is the half-width in metres; 0 is
+# Blender's CONSTANT interpolation, a hard switch on the halfway line.
+#
+# Left alone deliberately: CF_GoalNet also runs a team ramp, but at emission
+# strength 0.12 over an albedo of BLUE_HOT * 0.045, i.e. near-black either way,
+# and it carries the hex alpha texture that _to_alpha_coverage depends on.
+const TEAM_RAMPS := {
+	# cf/structure.py _ribbons(): the LED fascia. blend=3400 uu.
+	"CF_Ribbon": {
+		"albedo": [Color(0.02, 0.02, 0.03), Color(0.02, 0.02, 0.03)],
+		"emission": [BLUE_HOT, ORANGE_HOT],
+		"strength": 3.5, "roughness": 0.3, "metallic": 0.0, "blend": 34.0,
+	},
+	# cf/props.py goal_materials(): the lit ring around the goal mouth.
+	"CF_GoalTrim": {
+		"albedo": [BLUE, ORANGE],
+		"emission": [BLUE, ORANGE],
+		"strength": 3.4, "roughness": 0.2, "metallic": 0.0, "blend": 0.0,
+	},
+}
 
 # cf/lighting.py: arena.ring(-(stands.TIERS[0][0] + 300.0)) sampled at 10 even
 # steps. Evaluated once and inlined rather than reimplementing the ring solver.
@@ -152,6 +177,10 @@ func _fix_materials(mi: MeshInstance3D) -> void:
 		if m.resource_name == "CF_Turf":
 			mi.set_surface_override_material(i, _turf_material(m))
 			continue
+		if m.resource_name in TEAM_RAMPS:
+			mi.set_surface_override_material(
+				i, _team_material(m.resource_name))
+			continue
 		if m.resource_name in CUTOUT_MATERIALS:
 			_to_alpha_coverage(m)
 		if vertex_coloured:
@@ -192,9 +221,41 @@ func _turf_material(src: StandardMaterial3D) -> ShaderMaterial:
 	m.set_shader_parameter("albedo_tex", src.albedo_texture)
 	m.set_shader_parameter("emission_tex", src.emission_texture)
 	m.set_shader_parameter("noise_tex", _turf_noise())
-	# glTF carries Blender's 0.55 emission strength as the emissive factor.
+	# glTF carries Blender's 0.55 emission strength as the emissive factor, and
+	# Godot's importer stores that factor sRGB-ENCODED because the spatial
+	# shader decodes it on the way in. A custom shader has to decode it too:
+	# reading it raw gave the pitch 0.7674 against Blender's 0.5500, 40% too
+	# much emission, which is most of why the turf measured too bright AND too
+	# saturated at the same time. Verified to four decimals against three other
+	# emissive materials in the same import.
 	m.set_shader_parameter("emission_strength",
-		src.emission.r * src.emission_energy_multiplier if src.emission_enabled else 0.0)
+		src.emission.srgb_to_linear().r * src.emission_energy_multiplier
+		if src.emission_enabled else 0.0)
+	return m
+
+
+## Rebuild a team-ramped material on shaders/team_ramp.gdshader.
+##
+## Colours go across as Vector3 rather than Color on purpose: cf/const.py's
+## values are linear scene-referred, a plain `vec3` uniform takes them
+## unchanged, and a `source_color` uniform would sRGB-decode them a second
+## time and turn BLUE (0.043, 0.353, 1.0) into something nearly black.
+func _team_material(which: String) -> ShaderMaterial:
+	var spec: Dictionary = TEAM_RAMPS[which]
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/team_ramp.gdshader")
+	m.resource_name = which
+	for key in ["albedo", "emission"]:
+		var pair: Array = spec[key]
+		for j in 2:
+			var c: Color = pair[j]
+			m.set_shader_parameter(
+				"%s_%s" % [key, "blue" if j == 0 else "orange"],
+				Vector3(c.r, c.g, c.b))
+	m.set_shader_parameter("emission_strength", spec["strength"])
+	m.set_shader_parameter("roughness_v", spec["roughness"])
+	m.set_shader_parameter("metallic_v", spec["metallic"])
+	m.set_shader_parameter("blend_m", spec["blend"])
 	return m
 
 
