@@ -307,9 +307,9 @@ const EXT_WATTS := 6.0e4
 # 15/255 hot and 0.05 flat in saturation against `now_hero.png` -- washed out,
 # not just bright. The crowd is 733k loose boxes; EEVEE darkens the mass with
 # ray-traced occlusion between them, and Godot's SSAO at a 1.6 m radius barely
-# touches it. 0.7 is the measured value that puts the band back, and it is a
+# touches it. 0.525 is the measured value that puts the band back, and it is a
 # stand-in for missing occlusion, not a claim about the light.
-const BOWL_CORRECTION := 0.7
+const BOWL_CORRECTION := 0.525
 
 # `range` is only a cutoff window, and it bites earlier than it looks: at
 # d = 0.7 * range the window is already 0.58. These are set to roughly three
