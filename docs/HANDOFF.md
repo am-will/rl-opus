@@ -15,14 +15,21 @@ it is the most important thing in this file — see "Do this first".**
 **Arena (Godot).** Close to the Blender stills — see "The fidelity pass is done"
 below for the numbers and for the eight things that were wrong. Real
 `AreaLight3D`s, energies derived from Blender's wattages, `VoxelGI` bounce, and a
-corrected AgX grade. Volumetric fog is authored but **ships off** by user
-preference (`F` toggles it, `--fog <0..1>` scales it).
+corrected AgX grade.
 
-Note that `capture_godot.sh` used to default fog **on**, so every measurement
-recorded in `renders/godot_fidelity/` before this pass was of a configuration that
-never shipped — and the fog is blue, which was holding the dasher boards up by
-~14/255 and supplying most of their apparent saturation. It now defaults off.
-`FOG=1 capture_godot.sh ...` still turns it on.
+**The volumetric haze now ships ON at 0.12, reversing the earlier "ships off"
+preference — say if you want it back off.** The objection to it was that it greyed
+out the frame, and it did, because `volumetric_fog_albedo` was (0.55, 0.68, 1.0),
+a strong blue: what it mostly did was tint everything. With a neutral albedo and
+the density at 0.12 it is doing the job it exists for. Blender's own world carries
+a Volume Scatter (`cf/world.py`), which is where the light shafts under the
+floodlight banks in the reference stills come from. Measured, it moves the roof
+band from -21.0 to -17.8 on `hero` and -30.7 to -23.4 on `kickoff`, and reduces
+the board and pitch over-saturation. `F` toggles it; `--fog 0` turns it off.
+
+Note that `capture_godot.sh` used to default fog to 1.0 against a scene that
+shipped 0.0, so every measurement recorded in `renders/godot_fidelity/` before this
+pass was of a configuration that never shipped. It now follows the scene.
 
 **Octane (Godot).** Imported and at Rocket League scale, but **undersized — see
 "Unfinished work" below.** Paint arrives white; the blue was a ColorRamp mask and
@@ -42,7 +49,7 @@ into its own `RigidBody3D` is the first physics task.
 ## The fidelity pass is done — what it found
 
 `AreaLight3D` landed, and so did seven other things. Against the three current
-Blender stills the frame-mean error is now **−1.6 / +0.2 / +1.4 out of 255**, and
+Blender stills the frame-mean error is now **−0.4 / +1.5 / +2.4 out of 255**, and
 `tone_compare.py` reports "level only" on `hero` and `kickoff` — the shadows and
 highlights track Blender, not just the average.
 
@@ -96,7 +103,7 @@ Two measured **negative** results, so they are not retried:
 
 ### The one region still off
 
-The roof band is 12–31/255 too dark in all three shots. The hex canopy sits
+The roof band is 10–23/255 too dark in all three shots. The hex canopy sits
 **above** the floodlight ring at 75 m, so nothing lights it directly and every
 photon it gets is bounce. `CF_Roof` and `CF_Ceiling` are metallic 0.6 and
 `CF_Truss` is 0.8, so they are specular-dominated and reflect whatever the

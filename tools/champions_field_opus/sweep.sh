@@ -32,9 +32,14 @@ i=0
 for spec in "$@"; do
 	i=$((i + 1))
 	png="$out/${shot}_$i.png"
+	# The harness resolves each flag with args.find(), which takes the FIRST
+	# occurrence -- so a hardcoded default here would silently win over the
+	# same flag in $spec. Only supply --fog when the spec does not set it.
+	fog=""
+	case " $spec " in *" --fog "*) ;; *) fog="--fog 0" ;; esac
 	# shellcheck disable=SC2086
 	godot --path "$proj" --rendering-driver metal -- \
-		--capture "$png" --shot "$shot" --fog 0 $spec 2>&1 |
+		--capture "$png" --shot "$shot" $fog $spec 2>&1 |
 		grep -Ev '^$|mvk-error|Godot Engine|Vulkan 1|Metal 4|capture\]' || true
 	echo "=== [$i] $spec"
 	python3 "$root/tools/champions_field_opus/${TOOL:-compare_shots}.py" "$ref" "$png" |

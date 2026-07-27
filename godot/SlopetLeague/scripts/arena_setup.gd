@@ -10,11 +10,27 @@ extends Node3D
 ## haze (0 turns it off outright); `-- --streaks <0..1>` to scale the
 ## anamorphic glare. Interactively, F toggles the fog and G the streaks.
 
-## The haze is what would give the floodlights visible beams, but it is also
-## the fastest way to grey out a whole frame, and it greyed out this one. It
-## ships OFF. The Environment still carries a (very light) density and F still
-## toggles it, so turning it back on later is one key, not a rebuild.
-const FOG_DEFAULT := 0.0
+## The haze used to ship OFF, because at full strength it greyed out the whole
+## frame. It was also the wrong colour: `volumetric_fog_albedo` was
+## (0.55, 0.68, 1.0), a strong blue, so what it mostly did was tint everything
+## -- it was holding the dasher boards up by ~14/255 and supplying most of
+## their apparent saturation, which is not what haze is for.
+##
+## With the albedo neutral it is doing the job it exists for. Blender's world
+## carries a Volume Scatter at density 0.0016 (cf/world.py) and EEVEE renders
+## it with volumetric shadows on, which is where the light shafts under the
+## floodlight banks in the reference stills come from.
+##
+## 0.12 is where the two measures agree. Haze both fills the roof band and
+## lifts the blacks, and those pull in opposite directions: at 0.3 the roof
+## goes to -13.3 but the 5th-percentile shadow ratio drifts to 1.23 and
+## tone_compare.py flips to "CURVE mismatch". At 0.12 the roof is -17.8 on
+## `hero` and -23.4 on `kickoff` (against -21.0 and -30.7 with no haze at
+## all), the boards and pitch lose over-saturation, and the shadow ratio
+## stays at 1.12 -- still "level only" on both framings.
+##
+## `F` still toggles it and `--fog 0` still turns it off outright.
+const FOG_DEFAULT := 0.12
 
 ## Baked into the VoxelGIData by `--bake-gi`; see _bake_gi.
 const GI_ENERGY := 0.7
