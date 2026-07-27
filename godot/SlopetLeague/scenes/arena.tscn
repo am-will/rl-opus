@@ -1,10 +1,14 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/champions_field.glb" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="2_fly"]
 [ext_resource type="Script" path="res://scripts/arena_setup.gd" id="3_setup"]
 [ext_resource type="Script" path="res://scripts/shot_cameras.gd" id="4_shots"]
 [ext_resource type="Shader" path="res://shaders/night_sky.gdshader" id="5_sky"]
+[ext_resource type="Shader" path="res://shaders/streaks.gdshader" id="6_streaks"]
+
+[sub_resource type="ShaderMaterial" id="StreakMat_1"]
+shader = ExtResource("6_streaks")
 
 [sub_resource type="ShaderMaterial" id="SkyMat_1"]
 shader = ExtResource("5_sky")
@@ -80,3 +84,13 @@ script = ExtResource("2_fly")
 
 [node name="ShotCams" type="Node3D" parent="."]
 script = ExtResource("4_shots")
+
+[node name="Post" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Streaks" type="ColorRect" parent="Post"]
+material = SubResource("StreakMat_1")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2

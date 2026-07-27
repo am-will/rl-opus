@@ -3,11 +3,12 @@ extends Node3D
 ##
 ## Every light / camera / material fix now happens at import time in
 ## import/arena_post_import.gd, so the editor viewport is correct too. What is
-## left here is the offscreen capture harness and the volumetric fog toggle.
+## left here is the offscreen capture harness and the two look toggles.
 ##
 ## Pass `-- --capture <path>` to save a frame and quit, which is how this is
-## tuned without a human in the loop, and `-- --fog <0..1>` to scale the
-## volumetric haze (0 turns it off outright). Interactively, F toggles it.
+## tuned without a human in the loop; `-- --fog <0..1>` to scale the volumetric
+## haze (0 turns it off outright); `-- --streaks <0..1>` to scale the
+## anamorphic glare. Interactively, F toggles the fog and G the streaks.
 
 ## The haze is what would give the floodlights visible beams, but it is also
 ## the fastest way to grey out a whole frame, and it greyed out this one. It
@@ -20,6 +21,8 @@ var _frames := 0
 var _env: Environment = null
 var _fog_density := 0.0
 var _fog_on := true
+var _streaks: ShaderMaterial = null
+var _streaks_on := true
 
 
 func _ready() -> void:
@@ -40,6 +43,15 @@ func _ready() -> void:
 		scale = float(args[i + 1])
 	_set_fog(scale)
 
+	var rect := get_tree().current_scene.find_child("Streaks", true, false)
+	if rect is ColorRect and rect.material is ShaderMaterial:
+		_streaks = rect.material
+	var streaks := 1.0
+	i = args.find("--streaks")
+	if i != -1 and i + 1 < args.size():
+		streaks = float(args[i + 1])
+	_set_streaks(streaks)
+
 	# Light energies live in the import script, so finding the right overall
 	# level by editing them costs a reimport per guess. Exposure is a plain
 	# linear multiplier in front of the tonemapper, so sweeping it here finds
@@ -58,10 +70,22 @@ func _set_fog(scale: float) -> void:
 	_env.volumetric_fog_density = _fog_density * scale
 
 
+func _set_streaks(scale: float) -> void:
+	if _streaks == null:
+		return
+	_streaks_on = scale > 0.0
+	_streaks.set_shader_parameter("enabled", 1.0 if _streaks_on else 0.0)
+
+
 func _unhandled_key_input(e: InputEvent) -> void:
-	if e is InputEventKey and e.pressed and not e.echo and e.keycode == KEY_F:
+	if not (e is InputEventKey and e.pressed and not e.echo):
+		return
+	if e.keycode == KEY_F:
 		_set_fog(0.0 if _fog_on else 1.0)
 		print("[fog] %s" % ("on" if _fog_on else "off"))
+	elif e.keycode == KEY_G:
+		_set_streaks(0.0 if _streaks_on else 1.0)
+		print("[streaks] %s" % ("on" if _streaks_on else "off"))
 
 
 func _process(_delta: float) -> void:
