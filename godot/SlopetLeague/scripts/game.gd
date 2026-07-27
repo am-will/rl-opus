@@ -118,10 +118,13 @@ func _ready() -> void:
 	goal_fx.name = "GoalFx"
 	add_child(goal_fx)
 
-	pad_fx = BoostPadFx.new()
-	pad_fx.name = "BoostPadFx"
-	add_child(pad_fx)
-	pad_fx.setup(_arena, pads.pads)
+	# Splitting the four merged pad meshes into 34 is a few thousand triangles
+	# of work at load, and headless (the trace suite, the soak) draws nothing.
+	if DisplayServer.get_name() != "headless":
+		pad_fx = BoostPadFx.new()
+		pad_fx.name = "BoostPadFx"
+		add_child(pad_fx)
+		pad_fx.setup(_arena, pads.pads)
 
 	# A scripted run must sound like nothing at all, so the trace suite and the
 	# screenshot harness never see an audio node.

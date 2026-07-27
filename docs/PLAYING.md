@@ -45,7 +45,9 @@ into an opponent and you demolish them.
 - Powerslide (`Ctrl`) through a corner; the tyres let go at 6.5 m/s² instead of
   34 and the car rotates under you.
 - Jump, then hold `S` and boost: that is an aerial.
-- The 100-boost pads are the six on the outer edges; the 34 small ones give 12.
+- The 100-boost pads are the six on the outer edges; the other 28 give 12. A pad
+  you or the bot has taken goes dark and comes back after 10 s (big) or 4 s
+  (small), so a dull hexagon is a pad on cooldown, not a broken one.
 
 ## Tests
 
