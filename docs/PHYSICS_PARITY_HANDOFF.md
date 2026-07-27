@@ -107,7 +107,7 @@ Nothing here should start before section 2 exists.
 
 1. **`src/config.ts` → `scripts/rl_feel.gd`.** A straight transcription, 421
    lines. **Keep it separate from the existing `scripts/rl_const.gd`** — see
-   section 5 on why those two files disagree on purpose.
+   section 6 on why those two files disagree on purpose.
 2. **`src/physics/Ball.ts` → `scripts/ball.gd`.** 92 lines. Verify against the
    drop and wall-roll traces. The ball is currently a **static mesh baked into
    `assets/champions_field.glb` with no collision at all** — it has to come out
@@ -213,7 +213,97 @@ published coefficients (pitch 12.146 / yaw 8.9196 / roll 36.0796, damping
 
 ---
 
-## 5. The two constants files disagree on purpose
+## 5. The car is 17.8% undersized, and the exporter is broken
+
+The user's words: *"make sure the car is large enough because earlier it looked
+really small."* It is small, the cause is known, and there is a second bug
+underneath it that has to be fixed first.
+
+### What is verified
+
+Measured in `assets/Octane/Octane_Codex.blend`, `OCTANE_ASSET` collection,
+27 objects:
+
+| landmark | Blender units |
+|---|---|
+| bounding box, X (nose to tail, **includes the rear wing**) | 3.4970 |
+| wheelbase (front tire centre to rear tire centre, X) | 2.1377 |
+| front track / rear track | 1.5752 / 1.7496 |
+| front tire radius / rear tire radius | 0.3426 / 0.3768 |
+
+`tools/export_octane.py` scales the **bounding box** to the 1.1801 m hitbox
+length, giving `scale = 1.1801 / 3.4970 = 0.33746`. Scaling the **wheelbase** to
+RocketSim's 0.85 m gives `0.85 / 2.1377 = 0.39762`. The ratio is **1.178** — the
+car is 17.8% too small, because the bounding box includes a rear wing the hitbox
+never accounted for, so the whole car gets squeezed down to make the wing fit.
+
+The fix is to measure the wheelbase from the `*_Tire` meshes instead. That is
+straightforward and the docstring in `export_octane.py` already describes it —
+**the docstring was rewritten in an earlier session but the code never was.**
+
+### The bug underneath it
+
+I made that change, re-exported, and re-imported. **The model still arrived at
+raw Blender scale.** Measured out of the imported `.glb`:
+
+```
+size = (3.497, 1.579, 2.085) m      # raw Blender units, unscaled
+Octane_Front_Left_Tire centre = (-1.1960, 0.3669, -0.7876)
+```
+
+3.497 is the Blender bounding box verbatim, and the nose is still along X rather
+than rotated onto -Z. So neither `root.scale` nor `root.rotation_euler` reached
+the meshes.
+
+`export_octane.py` sets both on the `Octane_Root` **empty** and then exports with
+`use_selection=True`. **Strong suspicion, not yet confirmed: the 26 mesh objects
+are not children of `Octane_Root`,** so the empty's transform never propagates.
+I was stopped before verifying it. Confirm with:
+
+```python
+root = bpy.data.objects.get("Octane_Root")
+[o.name for o in bpy.data.collections["OCTANE_ASSET"].objects if o.parent is not root]
+```
+
+**The implication is bigger than the scale bug.** If the root transform has never
+applied, then the `--length` parameter has never done anything, and whatever
+scale and orientation the car had in the scene was coming from the node transform
+in `arena.tscn`, not from the export. That would explain why the removed staging
+nodes were `Octane` at "1.0x" and `OctaneBig` at "1.1773x" — relative multipliers
+on top of an unknown base, rather than absolute scales. Do not trust any recorded
+scale figure for the car until this is settled.
+
+Fix by either parenting the meshes to the root in the export script before
+transforming, or by applying the transform to each mesh object directly. Verify
+by re-importing and checking the wheelbase measures 0.85 m in Godot.
+
+### Decisions the user delegated
+
+Asked to pick, having said *"make the car whatever you think it should be, and
+then we'll adjust it if we need to"*:
+
+- **Hitbox: use RocketSim's `120.507 x 86.6994 x 38.6591`,** already in
+  `scripts/rl_const.gd` and covered by `tests/verify_rl.gd`. The widely-quoted
+  `118.01 x 84.20 x 36.16` that `src/config.ts` uses is documented as wrong, and
+  the difference is only 2-7% — immaterial to feel, but the correct numbers are
+  free and they are what reproduce RL's inertia matrix.
+- **Do not apply `BODY_STRETCH = 1.35` to the visual model.** The TS build
+  stretches its car 1.35x in length, but that car is procedural geometry
+  (`src/render/CarMesh.ts`) where stretching is harmless. This is a real Octane
+  mesh; stretching it longitudinally would visibly distort it against wheels
+  that stay round.
+- **Open question, for the trace harness to answer:** whether the *hitbox*
+  should still carry the 1.35 stretch even though the model does not. A longer
+  box changes dodge reach and ball control, and the TS build's feel may partly
+  depend on it. Do not decide this by eye — put it in a trace and compare.
+- **Scale the model to a true 85 uu wheelbase** once the exporter is fixed, then
+  render it beside the ball and let the user judge. The `scale` shot in
+  `scripts/shot_cameras.gd` exists for exactly this — a 42 mm lens straight at
+  the centre spot, so car size is judged against the ball without perspective
+  doing the arguing.
+
+
+## 6. The two constants files disagree on purpose
 
 `scripts/rl_const.gd` (249 lines) transcribes **RocketSim** — physically exact,
 verified by `tests/verify_rl.gd`, 15/15 passing.
@@ -241,7 +331,7 @@ Flag it to the user rather than silently changing it — the hitbox is felt.
 
 ---
 
-## 6. Traps
+## 7. Traps
 
 **Physics engine.** `project.godot` leaves `physics/3d/physics_engine` at
 `DEFAULT`. The options in this build are `DEFAULT, Jolt Physics, GodotPhysics3D,
@@ -281,12 +371,14 @@ child, and two zombies on the GPU will make everything mysteriously slow.
 
 ---
 
-## 7. What "done" looks like
+## 8. What "done" looks like
 
 - The golden-trace diff stays inside a stated tolerance across all the scripted
   sequences in section 2, and where it doesn't, the divergence is understood and
   written down rather than shrugged at.
 - Section 4a is closed — the contact normal matches the published model.
+- Section 5 is closed — the exporter applies its transform, and the car measures
+  an 85 uu wheelbase in Godot.
 - A human can drive it and say it feels like the TS build. **This is the actual
   acceptance test.** The traces exist to make the failures findable, not to
   replace the judgement.
@@ -296,7 +388,7 @@ thing in the repo that already has the answer.
 
 ---
 
-## 8. Working agreements
+## 9. Working agreements
 
 From the user, on record:
 
