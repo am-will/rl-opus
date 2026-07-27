@@ -19,6 +19,13 @@ Measured against `renders/champions_field_opus/now_hero.png`, the pitch was 50/2
 dark at the start of the pass and every region is now within about 5/255 on the `hero`
 and `kickoff` framings.
 
+> **Superseded in places — read `docs/HANDOFF.md` first.** A later pass found eight
+> faults this document does not mention, and corrected two claims it makes: Godot 4.7
+> *does* have a true area light (`AreaLight3D`, and all 21 lights now use it), and the
+> "within about 5/255" figure above was measured with volumetric fog ON, which the
+> scene ships OFF. The fog is blue and was holding the boards up by ~14/255.
+> Current numbers, fog off, are in `docs/HANDOFF.md`.
+
 ## Feedback loop
 
 ```bash

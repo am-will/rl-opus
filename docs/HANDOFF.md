@@ -12,12 +12,17 @@ it is the most important thing in this file — see "Do this first".**
 
 ## Where things stand
 
-**Arena (Godot).** The Champions Field arena renders close to the Blender stills.
-Measured per-region mean luminance against `renders/champions_field_opus/now_hero.png`,
-every band is within about 5/255 on the `hero` and `kickoff` framings; the pitch
-alone started 50 too dark. Sky, turf shader, anamorphic streaks, alpha-to-coverage
-and AgX all landed. Volumetric fog is authored but **ships off** by user preference
-(`F` toggles it, `--fog <0..1>` scales it).
+**Arena (Godot).** Close to the Blender stills — see "The fidelity pass is done"
+below for the numbers and for the eight things that were wrong. Real
+`AreaLight3D`s, energies derived from Blender's wattages, `VoxelGI` bounce, and a
+corrected AgX grade. Volumetric fog is authored but **ships off** by user
+preference (`F` toggles it, `--fog <0..1>` scales it).
+
+Note that `capture_godot.sh` used to default fog **on**, so every measurement
+recorded in `renders/godot_fidelity/` before this pass was of a configuration that
+never shipped — and the fog is blue, which was holding the dasher boards up by
+~14/255 and supplying most of their apparent saturation. It now defaults off.
+`FOG=1 capture_godot.sh ...` still turns it on.
 
 **Octane (Godot).** Imported and at Rocket League scale, but **undersized — see
 "Unfinished work" below.** Paint arrives white; the blue was a ColorRamp mask and
@@ -34,57 +39,88 @@ into its own `RigidBody3D` is the first physics task.
 
 ---
 
-## Do this first: AreaLight3D
+## The fidelity pass is done — what it found
 
-`docs/GODOT_FIDELITY_HANDOFF.md` says *"Godot has no true area light either"* and
-describes rebuilding Blender's 21 area lights as aimed spots opened up towards
-hemispherical. **That sentence was true when written and is now false.**
+`AreaLight3D` landed, and so did seven other things. Against the three current
+Blender stills the frame-mean error is now **−1.6 / +0.2 / +1.4 out of 255**, and
+`tone_compare.py` reports "level only" on `hero` and `kickoff` — the shadows and
+highlights track Blender, not just the average.
 
-Godot 4.7 shipped `AreaLight3D` on 18 June 2026. It is verified present in the
-installed 4.7.1 build, with `area_size: Vector2`, `area_range`, `area_attenuation`,
-`area_normalize_energy` and `area_texture`.
+**Measure before you change anything.** Every one of the fixes below was found by
+measuring, and three of the most damaging were invisible to the region-mean tool
+that was being used at the time:
 
-This is the single biggest approximation in the whole visual pass. Every one of
-the 21 rebuilt lights was a `RECTANGLE` or `DISK` area light in `cf/lighting.py`
-with explicit dimensions, and they are currently wide spots with a hand-tuned
-angle attenuation standing in for a hemisphere.
+1. **`AreaLight3D` is a true port, not a re-tune.** Measured on a white Lambertian
+   plane in this build: with `area_normalize_energy` on, an AreaLight3D delivers
+   the same on-axis illuminance as an OmniLight3D at the same `light_energy` and
+   obeys the same `pow(d, -attenuation)` law on raw metres. So the units are
+   shared and only the emission *shape* changes.
+2. **The light energies are now derived from Blender's wattages,** not tuned. A
+   Blender spot converts as `P / (4·PI²)` and a Blender area light as
+   `P / (PI²·0.9572)`; Godot's diffuse BRDF has no `1/PI`. Everything runs at
+   true inverse square. This fixed the group *balance*, which had been arbitrary.
+3. **The turf bump was ~80x too strong** — Blender's Bump node has Distance 0.012
+   as well as Strength 0.42, and the shader had dropped it for a magic `*12.0`.
+   The central-difference step was also 0.25 m against a 7 cm octave, so the
+   "gradient" was aliasing. That was the coral-looking pitch.
+4. **The scene had no indirect light at all.** SSIL, SSR and sky ambient together
+   move the dasher boards by 0.3/255; SDFGI by 0.6. A `VoxelGI` sized to the whole
+   bowl took them from −19.5 to −0.8. Most of what it carries is the *emissive*
+   geometry — wall strips, chevrons, boost pads, goal frame, floodlight lenses —
+   which lights the room in Blender and lit nothing here.
+5. **`adjustment_contrast = 1.15` was destroying AgX's toe.** Blender's AgX never
+   reaches black: its 1st percentile is 15/255. Applying contrast *after*
+   tonemapping crushed that to 0.4. It was standing in for Blender's "AgX -
+   Punchy" look, which applies inside AgX's log space — this build exposes
+   `tonemap_agx_contrast`, which is the right place.
+6. **Two materials were flat white** because glTF carries no node graphs: the LED
+   fascia ribbon (a blue→orange gradient in Blender, and the blown band at the top
+   of every frame) and the goal trim (team-coloured, which is why the goal mouth
+   read cold). Both rebuilt on `shaders/team_ramp.gdshader`.
+7. **Godot's glTF importer stores `emission` sRGB-encoded** because the spatial
+   shader decodes it. Custom shaders must decode too — verified to four decimals
+   across four materials.
+8. **Blender applies a compositor Bloom at threshold 1.0, strength 0.35** and
+   Godot was blooming at threshold 2.0, intensity 0.12, so most of the glare
+   never happened.
 
-**The task.** In `import/arena_post_import.gd`, replace `_spot()` with
-`AreaLight3D` for the TEAM, BOWL, COVE and EXT groups, using Blender's own sizes:
+Two measured **negative** results, so they are not retried:
 
-| group | Blender shape | size | count |
-|---|---|---|---|
-| FILL | DISK | 140.0 | 1 |
-| TEAM | RECTANGLE | 90.0 x 26.0 | 2 |
-| BOWL | RECTANGLE | 34.0 x 14.0 | 10 |
-| COVE | RECTANGLE | 60.0 x 10.0 | 4 |
-| EXT | RECTANGLE | 160.0 x 160.0 | 4 |
+- A `ReflectionProbe` over the bowl costs ~9/255 everywhere. The metals reflect
+  the night sky, and at strength 3.0 the sky is *brighter* than the arena
+  interior it would otherwise reflect — the sky reflection was accidentally
+  standing in for missing bounce.
+- `VoxelGI` at subdiv 512 is worse than 256 (−5.7 frame, boards −10.7) for a
+  61 MB asset against 13 MB. Finer voxels leak less light, and here the leak was
+  doing useful work.
 
-Those are Blender units (metres), read straight from `cf/lighting.py`. Positions,
-aim targets and colours are already correct in `arena_post_import.gd` — only the
-light type and its shape change. Energies will need re-tuning because area lights
-and spots do not normalise the same way; `area_normalize_energy` is worth testing
-both ways.
+### The one region still off
 
-Then re-measure:
+The roof band is 12–31/255 too dark in all three shots. The hex canopy sits
+**above** the floodlight ring at 75 m, so nothing lights it directly and every
+photon it gets is bounce. `CF_Roof` and `CF_Ceiling` are metallic 0.6 and
+`CF_Truss` is 0.8, so they are specular-dominated and reflect whatever the
+environment gives them. Tried and measured: GI energy at 3.6x buys +6.7 there
+while blowing everything else by +14; subdiv 512 and a ReflectionProbe both make
+it worse. The remaining honest option is `LightmapGI`, which path-traces properly
+— but `LightmapGI.bake()` is **not exposed to GDScript**, so it needs an editor
+bake, and it would replace the direct lighting on static geometry that the rest of
+this work just matched. That trade has not been made.
 
-```bash
-tools/champions_field_opus/capture_godot.sh area hero kickoff
-python3 tools/champions_field_opus/compare_shots.py \
-    renders/champions_field_opus/now_hero.png renders/godot_fidelity/area_hero.png \
-    renders/godot_fidelity/COMPARE_area.png
-```
+Second-order: the pitch is ~0.10 over on saturation. Godot's AgX does less
+chromaticity inset than Blender's, so saturated colour pushes further from grey in
+both directions at once — measured on the blue paint at B/R 4.11 against Blender's
+2.37, with the warm track correspondingly less blue. `adjustment_saturation = 0.95`
+is a partial global correction.
 
-**Why it matters beyond fidelity:** the user is weighing a port to Unreal Engine
-5.8, and the strongest remaining argument for switching is lighting. If real area
-lights close the gap, that argument mostly evaporates. If they do not, there is a
-genuinely informed reason to move. Do this before anything else.
+### Only three Blender stills are current
 
-The user also observed a visible difference between the current Godot render and
-the Blender stills — darker, richer boards, cleaner turf, better boost-pad glow.
-Note that some reference stills carry PSYONIX/RLCS branding and are from an older
-iteration than the AIONIX/Slopet League ones; compare the *look*, not the logos.
-The newest Blender references are `now_hero.png` (17:56) and `brand2_kickoff.png`.
+See `renders/champions_field_opus/REFERENCES.md`. `hero` → `now_hero.png`,
+`broadcast` → `ball2_broadcast.png`, `kickoff` → `brand2_kickoff.png`. Everything
+else in that directory is a superseded iteration, and two shots were being scored
+against stills from an abandoned lighting experiment (`gb_corner` averages 171/255,
+`gb_top` averages 15). **There is no current reference for `goal`, `corner`, `top`,
+`ceiling` or `aerial`** — re-render those from Blender before trying to score them.
 
 ---
 
@@ -235,10 +271,20 @@ The user is weighing a port. Facts gathered, all verified:
 **Assessment given to the user:** the fidelity lost going Blender → Godot was
 about 10 parts pipeline and configuration to 1 part engine capability, so switching
 would not have avoided most of it. The recommendation was to stay on Godot,
-contingent on the `AreaLight3D` experiment above. If area lights close the gap, get
-on with physics. If not, port the arena to the existing UE 5.8 host and render the
-same `hero` and `kickoff` framings through `compare_shots.py` for a real
-side-by-side.
+contingent on the `AreaLight3D` experiment.
+
+**That experiment has now run, and the evidence supports staying.** Of the eight
+faults found, seven were pipeline or configuration — a dropped Bump Distance, an
+arbitrary energy balance, a contrast operator in the wrong colour space, two node
+graphs glTF cannot carry, an sRGB decode, a bloom threshold. Exactly one was an
+engine capability gap: no usable indirect light, and `VoxelGI` closed most of it.
+Nothing that remains would obviously be free in UE5 either — the roof gap is a
+"this surface only receives bounce" problem that Lumen would genuinely solve, but
+it is one band at the top of frame, mostly outside gameplay framing.
+
+The one real Godot limitation hit: `LightmapGI.bake()` is not exposed to
+GDScript, so the highest-quality GI option cannot be automated from a script and
+needs an editor bake.
 
 **A large advantage either way:** the Blender scene is generated by Python. Every
 light position, aim, colour and material value is a number in `cf/*.py`. An Unreal
@@ -251,12 +297,35 @@ would need faking.
 ## Tools
 
 ```bash
-# capture Godot from the ported Blender shots
+# capture Godot from the ported Blender shots (fog defaults OFF, as it ships)
 tools/champions_field_opus/capture_godot.sh <tag> [shot ...]
 # shots: hero kickoff broadcast goal corner top ceiling aerial scale
 
-# measure a capture against a Blender still, and write a comparison sheet
+# per-region mean luminance and saturation -- catches LEVEL errors
 python3 tools/champions_field_opus/compare_shots.py <blender.png> <godot.png> [sheet.png]
+
+# luminance percentiles -- separates a level error from a CURVE error, which
+# region means cannot do. Says "level only" or "CURVE mismatch".
+python3 tools/champions_field_opus/tone_compare.py <blender.png> <godot.png>
+
+# 2x region zooms, side by side -- catches TEXTURE errors, which neither of the
+# above can see. A pitch of the right average brightness can still be wrong.
+python3 tools/champions_field_opus/crop_compare.py <blender.png> <godot.png> \
+    <out.png> [turf boards crowd pads goal roof]
+
+# bracket a lever without a reimport per guess (25 s per value)
+tools/champions_field_opus/sweep.sh <shot> <blender.png> "<args>" ["<args>" ...]
+#   --lights BOWL=0.6,TEAM=1.2   scale a light group by node-name prefix
+#   --env glow_intensity=0.4     set any Environment property
+#   --gi 0.8 / --ambient 0.3 / --exposure 0.9
+# TOOL=tone_compare LINES=16 switches the readout to percentiles.
+
+# rebake the VoxelGI after changing any light or emissive material
+godot --path godot/SlopetLeague --rendering-driver metal -- \
+    --bake-gi res://assets/arena_voxelgi.res
+
+# Blender / Godot contact sheet across the three measured shots
+python3 tools/champions_field_opus/progress_sheet.py <out.png> <tag> [tag ...]
 
 # physics constants self-test
 godot --path godot/SlopetLeague --headless --script res://tests/verify_rl.gd
