@@ -195,6 +195,54 @@ framing. Note that emissive geometry only lights the room here through the Voxel
 
 ---
 
+## The Octane
+
+Every arena shot frames the car at about forty pixels tall, which is useless for judging a
+material, so the car has its own loop:
+
+```bash
+tools/champions_field_opus/capture_octane.sh <tag> [view ...]   # TEAM=orange|both
+godot --path godot/SlopetLeague --headless --script res://tests/probe_octane.gd
+```
+
+`tests/octane_shot.tscn` parks a frozen car on the centre spot inside the real arena —
+same environment, same VoxelGI, same grade — and puts the camera an arm's length away.
+`probe_octane.gd` dumps every surface's material, textures and PBR values, which is how
+the three faults below were found rather than guessed at.
+
+**The chassis was being painted team colour.** `car_fx.gd` picked its meshes by node name,
+`*Body*`, and the glTF names both shell meshes `Octane_Body_*` — but `Octane_Body_1` is
+the *chassis*, not the shell. Its texture is a real albedo map (dark metals, chrome
+headers, a red engine block); multiplying that by team blue put the reds at near-black and
+flattened every metal into one blue-grey mass, which is why the back of the car looked
+unfinished. Selection is by material name now. **The mesh names are not a reliable guide
+to what a surface is on this model** — check `probe_octane.gd` before matching on one.
+
+**Two textures are masks, not colour maps.** `Octane_Body.png` is white over the panels
+that take paint and black over the trim, so the albedo multiply *is* the paint job and the
+same texture drives emission (`EMISSION_OP_MULTIPLY`) to keep the trim from glowing.
+`OEM_Rim.png` is greyscale, peaks at 121/255 and has a median of 0 — a detail mask.
+`tools/build_octane_rim_albedo.py` lifts it off a mid-grey floor into an albedo; used raw
+it renders the wheel near-black.
+
+**The importer drops `KHR_materials_clearcoat`.** All eight materials ask for it and none
+of them get it, and the coat is most of what makes car paint read as car paint. It is
+restored per material in `car_fx.gd`. Body metallic also goes to zero — the glTF authors a
+flake paint at 0.48, and a metal takes its colour from the floodlights rather than from the
+team.
+
+**Paint colours are LINEAR.** `BaseMaterial3D.albedo_color` reaches the shader raw, so
+`TEAM_PAINT` is not what a colour picker would show. They were fitted against the promo
+shot in `assets/octane_reference/`, whose paint sits at sRGB #1054d3 — hue 219, saturation
+0.92. Rendered, the blue lands at hue 218; the orange is matched to the HUD's hue 26 rather
+than to the promo, which has no orange car in it.
+
+**Anything touching wheels must search from the CAR, not from `Model`.** `car.gd`'s
+`_build_wheel_pivots` reparents all twenty-four wheel meshes onto pivots hanging off the
+car before `CarFx` runs.
+
+---
+
 ## What is still open
 
 **Baked GI (item 9).** Still the largest remaining fidelity item and still the textbook
