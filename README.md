@@ -1,6 +1,20 @@
 # Rocket Arena
 
-A browser rocket-car soccer game — Three.js for rendering, Rapier for physics, Vite for the dev server. The first screen is the game.
+Two builds of the same game.
+
+**The Godot build** is the one to play — a full stadium, an Octane, a bot, and
+the physics ported tick-for-tick from the browser build:
+
+```bash
+godot --path godot/SlopetLeague
+```
+
+See [`docs/PLAYING.md`](docs/PLAYING.md) for the controls and the test suite.
+
+**The browser build** in `src/` is the original, and it is now the specification
+the Godot one is verified against — `tools/trace/verify.py` diffs them scenario
+by scenario. Three.js for rendering, Rapier for physics, Vite for the dev
+server. The first screen is the game.
 
 ```bash
 npm install
