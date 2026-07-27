@@ -29,6 +29,9 @@ var _score_plate: ColorRect
 var _boost := 0.0
 var _boost_infinite := false
 var _toast_timer := 0.0
+## Free play has no goal phase to hang a banner off, so it gets its own timer.
+var _goal_banner := 0.0
+var _goal_team := 0
 var _flash := 0.0
 var _flash_colour := Color.WHITE
 
@@ -70,7 +73,7 @@ func _ready() -> void:
 	_sub = _label(30)
 	_place(_sub, Vector2(0.5, 0.42), Vector2(0, 84), Vector2(900, 44))
 	_toast = _label(28)
-	_place(_toast, Vector2(0.5, 0.62), Vector2(0, 0), Vector2(700, 40))
+	_place(_toast, Vector2(0.5, 0.78), Vector2(0, 0), Vector2(700, 40))
 
 	# --- boost dial, bottom right -------------------------------------------
 	_dial = Control.new()
@@ -177,8 +180,13 @@ func update_from(game: Game) -> void:
 			_centre.text = "%s WINS" % ("BLUE" if game.score[0] > game.score[1] else "ORANGE")
 			_sub.text = "Press T for a rematch"
 		_:
-			_centre.text = ""
-			_sub.text = ""
+			if _goal_banner > 0.0:
+				_centre.modulate = BLUE if _goal_team == 0 else ORANGE
+				_centre.text = "GOAL!"
+				_sub.text = "%s scores" % ("BLUE" if _goal_team == 0 else "ORANGE")
+			else:
+				_centre.text = ""
+				_sub.text = ""
 
 
 func _process(dt: float) -> void:
@@ -187,6 +195,8 @@ func _process(dt: float) -> void:
 		_toast.modulate.a = clampf(_toast_timer / 0.4, 0.0, 1.0)
 		if _toast_timer <= 0.0:
 			_toast.text = ""
+	if _goal_banner > 0.0:
+		_goal_banner = maxf(0.0, _goal_banner - dt)
 	if _flash > 0.0:
 		_flash = maxf(0.0, _flash - dt * 2.2)
 		_flash_rect.color = Color(
@@ -203,4 +213,5 @@ func toast(msg: String) -> void:
 func flash_goal(scorer: int) -> void:
 	_flash = 1.0
 	_flash_colour = BLUE if scorer == 0 else ORANGE
-	toast("GOAL")
+	_goal_banner = 2.0
+	_goal_team = scorer

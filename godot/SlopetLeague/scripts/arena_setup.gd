@@ -37,6 +37,8 @@ const GI_ENERGY := 0.7
 
 var _capture_path := ""
 var _frames := 0
+## Frames to wait before the capture; 45 is enough for TAA and glow to settle.
+var _capture_frames := 45
 var _env: Environment = null
 var _fog_density := 0.0
 var _fog_on := true
@@ -57,6 +59,11 @@ func _ready() -> void:
 	var i := args.find("--capture")
 	if i != -1 and i + 1 < args.size():
 		_capture_path = args[i + 1]
+	# `--capture-after N` waits N frames instead of 45, which is how you
+	# photograph the match a few seconds in rather than at the kickoff whistle.
+	i = args.find("--capture-after")
+	if i != -1 and i + 1 < args.size():
+		_capture_frames = maxi(2, int(args[i + 1]))
 
 	var we := _scene().find_child("WorldEnvironment", true, false)
 	if we is WorldEnvironment:
@@ -242,7 +249,7 @@ func _process(_delta: float) -> void:
 	if _capture_path == "":
 		return
 	_frames += 1
-	if _frames < 45:                       # let TAA/glow settle
+	if _frames < _capture_frames:          # let TAA/glow settle
 		return
 	await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()

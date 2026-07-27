@@ -56,6 +56,9 @@ var countdown := Feel.MATCH_COUNTDOWN
 var goal_timer := 0.0
 var overtime := false
 var last_scorer := -1
+## Cumulative, for the harnesses: a demolished car respawns after a second, so
+## `wrecked` is only true for a 120-tick window and is easy to sample past.
+var demolition_count := 0
 
 var _input := PlayerInput.new()
 var _player_intent := CarInput.new()
@@ -273,6 +276,7 @@ func _update_demolitions() -> void:
 
 
 func _demolish(victim: Car) -> void:
+	demolition_count += 1
 	if audio:
 		audio.explode()
 	victim.set_active(false)

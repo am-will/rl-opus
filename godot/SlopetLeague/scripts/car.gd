@@ -841,10 +841,9 @@ func _teleport(t: Transform3D) -> void:
 
 
 func respawn(x: float, z: float, yaw: float, new_boost := Feel.RESPAWN_BOOST) -> void:
-	if not active:
-		active = true
-		collision_layer = Layers.CAR
-		collision_mask = Layers.ARENA | Layers.BALL | Layers.CAR
+	# set_active handles the freeze; going through it is what stops a demolished
+	# car respawning frozen and immovable.
+	set_active(true)
 	demo_timer = 0.0
 	wrecked = false
 	_teleport(Transform3D(Basis(Vector3(0, 1, 0), yaw), Vector3(x, 0.21, z)))
