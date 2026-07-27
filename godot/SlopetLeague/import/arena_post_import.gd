@@ -35,7 +35,7 @@ extends EditorScenePostImport
 # 20% of each other, which is why the bowl read flat; anything close to
 # physical needs the energy scaled up to match, hence the large number below.
 # 2.0 is true inverse-square, the same falloff Blender's 105 kW spots use.
-const FLOOD_ENERGY := 2600.0
+const FLOOD_ENERGY := 1650.0
 const FLOOD_RANGE := 420.0
 const FLOOD_ATTEN := 2.0
 const FLOOD_FOG := 1.6            # beam contribution to the volumetric fog
@@ -56,6 +56,9 @@ const S := 0.01                   # uu -> metres, matches cf/const.py
 # pitch runs along Godot's Z and blue defends +Z.
 const CEIL_Z := 2044.0            # cf/const.py
 const BACK_Y := 5120.0
+
+# Alpha-blended in Blender, alpha-to-coverage here -- see _to_alpha_coverage.
+const CUTOUT_MATERIALS := ["CF_Wall", "CF_Ceiling", "CF_GoalNet"]
 
 const BLUE_HOT := Color(0.35, 0.72, 1.00)
 const ORANGE_HOT := Color(1.00, 0.66, 0.24)
@@ -110,12 +113,31 @@ func _fix_materials(mi: MeshInstance3D) -> void:
 		if m.resource_name == "CF_Turf":
 			mi.set_surface_override_material(i, _turf_material(m))
 			continue
+		if m.resource_name in CUTOUT_MATERIALS:
+			_to_alpha_coverage(m)
 		if vertex_coloured:
 			m.vertex_color_use_as_albedo = true
 		if m.emission_enabled:
 			var ceiling := LENS_EMISSION if lens else EMISSION_CAP
 			m.emission_energy_multiplier = minf(
 				m.emission_energy_multiplier, ceiling)
+
+
+## Alpha blending is where a real-time renderer looks worst, and the three
+## meshes using it here are all fine lattices seen edge-on through each other:
+## the containment net above the boards, the hex canopy and the goal net. They
+## do not write depth, so they sort against each other by draw order and the
+## net reads as a heavy white grid instead of thin wire.
+##
+## Alpha-to-coverage resolves them through MSAA instead. With msaa_3d already
+## at 4x that keeps soft edges, fixes the sorting outright, and lets them write
+## depth so SSAO and SSR see them.
+func _to_alpha_coverage(m: StandardMaterial3D) -> void:
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	m.alpha_scissor_threshold = 0.5
+	m.alpha_antialiasing_mode = \
+		BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE_AND_TO_ONE
+	m.alpha_antialiasing_edge = 0.3
 
 
 ## Swap the pitch onto shaders/turf.gdshader, keeping the baked maps.
@@ -169,7 +191,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 		var col := BLUE_HOT if sy < 0.0 else ORANGE_HOT
 		_spot(scene, "TEAM_%d" % int(sy),
 			Vector3(0, sy * (BACK_Y + 1400), 2600), Vector3(0, sy * 1200, 0),
-			col, 19.0, 62.0, 200.0, 1.0)
+			col, 19.0, 130.0, 200.0, 1.0)
 
 	# BOWL: ten strips on the lower-tier lip, aimed up and out across the
 	# seating. The pitch fill has to stay low for contrast, so the crowd needs
@@ -177,8 +199,8 @@ func _rebuild_area_lights(scene: Node) -> void:
 	for b in BOWL_RING.size():
 		var p: Vector2 = BOWL_RING[b]
 		_spot(scene, "BOWL_%d" % b,
-			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.9, p.y * 1.9, 4200),
-			Color(1.0, 0.96, 0.90), 70.0, 58.0, 150.0, 1.2)
+			Vector3(p.x, p.y, CEIL_Z + 500), Vector3(p.x * 1.5, p.y * 1.5, 3000),
+			Color(1.0, 0.95, 0.87), 60.0, 165.0, 150.0, 1.2)
 
 	# COVE: warm under-roof strips that separate the bowl from the night sky.
 	for sy in [-1.0, 1.0]:
@@ -186,7 +208,7 @@ func _rebuild_area_lights(scene: Node) -> void:
 			_spot(scene, "COVE_%d%d" % [int(sx), int(sy)],
 				Vector3(sx * 5600, sy * 6200, 7000),
 				Vector3(sx * 1800, sy * 2200, 1200),
-				Color(0.92, 0.94, 1.0), 19.0, 56.0, 160.0, 1.0)
+				Color(0.95, 0.93, 0.92), 16.0, 140.0, 160.0, 1.0)
 
 	# EXT: top light on the roof so the bowl reads from outside. Only the
 	# aerial shot ever sees these.
@@ -205,8 +227,14 @@ func _spot(scene: Node, name: String, pos_uu: Vector3, aim_uu: Vector3,
 	l.name = name
 	l.light_color = colour
 	l.light_energy = energy
-	l.spot_angle = angle * 0.5      # Blender's spot_size is the full cone
-	l.spot_angle_attenuation = 0.6  # soft edge, like an area light's penumbra
+	# Blender's spot_size is a full cone; Godot's spot_angle is the half angle.
+	# Every light rebuilt here was a RECTANGLE or DISK area light, though, and
+	# an area light emits over the whole hemisphere in front of it rather than
+	# down a cone. Ported at their nominal widths these lit the upper deck in
+	# ten tight pools and left the lower tiers black, so the angles below are
+	# opened up towards hemispherical and the attenuation kept soft.
+	l.spot_angle = minf(angle * 0.5, 89.0)
+	l.spot_angle_attenuation = 0.4
 	l.spot_range = rng
 	l.spot_attenuation = atten
 	l.shadow_enabled = false        # every one of these was use_shadow=False

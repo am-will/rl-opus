@@ -36,7 +36,7 @@ uniform float cloud_low = 0.42;     // cramp element positions
 uniform float cloud_high = 0.72;
 
 group_uniforms output;
-uniform float strength = 2.0;       // Background node Strength (3.0 in
+uniform float strength = 1.2;       // Background node Strength (3.0 in
                                     // Blender; lower here because Godot has no
                                     // atmospheric haze absorbing it)
 
