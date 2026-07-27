@@ -50,7 +50,10 @@ func _ready() -> void:
 	var i := args.find("--shot")
 	if i != -1 and i + 1 < args.size():
 		want = args[i + 1]
-	elif args.has("--capture"):
+	elif args.has("--capture") and not (get_tree().current_scene is Game):
+		# `--capture` means "photograph the arena" for the visual pass, but when
+		# the game itself is the scene it means "photograph the game" — leave the
+		# chase camera alone.
 		want = "hero"
 
 	for name in SHOTS:

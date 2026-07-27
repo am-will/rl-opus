@@ -44,6 +44,13 @@ var _streaks: ShaderMaterial = null
 var _streaks_on := true
 
 
+## The headless harnesses instantiate this scene by hand, so there may be no
+## current_scene to search yet; the tree root always works.
+func _scene() -> Node:
+	var s: Node = get_tree().current_scene
+	return s if s != null else get_tree().root
+
+
 func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 
@@ -51,12 +58,7 @@ func _ready() -> void:
 	if i != -1 and i + 1 < args.size():
 		_capture_path = args[i + 1]
 
-	# The headless harnesses instantiate this scene by hand, so there may be no
-	# current_scene to search; the tree root always works.
-	var scene: Node = get_tree().current_scene
-	if scene == null:
-		scene = get_tree().root
-	var we := scene.find_child("WorldEnvironment", true, false)
+	var we := _scene().find_child("WorldEnvironment", true, false)
 	if we is WorldEnvironment:
 		_env = we.environment
 		_fog_density = _env.volumetric_fog_density
@@ -67,7 +69,7 @@ func _ready() -> void:
 		scale = float(args[i + 1])
 	_set_fog(scale)
 
-	var rect := get_tree().current_scene.find_child("Streaks", true, false)
+	var rect := _scene().find_child("Streaks", true, false)
 	if rect is ColorRect and rect.material is ShaderMaterial:
 		_streaks = rect.material
 	var streaks := 1.0
@@ -112,7 +114,7 @@ func _ready() -> void:
 
 	i = args.find("--gi")
 	if i != -1 and i + 1 < args.size():
-		var gi := get_tree().current_scene.find_child("VoxelGI", true, false)
+		var gi := _scene().find_child("VoxelGI", true, false)
 		if gi is VoxelGI and gi.data != null:
 			gi.data.energy *= float(args[i + 1])
 			print("[gi] energy = %.3f" % gi.data.energy)
@@ -138,13 +140,13 @@ func _ready() -> void:
 ## volume picks it up, which is most of why the dasher boards read near-black
 ## here against a mid-grey in the reference.
 func _bake_gi(path: String) -> void:
-	var gi := get_tree().current_scene.find_child("VoxelGI", true, false)
+	var gi := _scene().find_child("VoxelGI", true, false)
 	if not (gi is VoxelGI):
 		push_error("[gi] no VoxelGI node in the scene")
 		get_tree().quit(1)
 		return
 	var t0 := Time.get_ticks_msec()
-	gi.bake(get_tree().current_scene, false)
+	gi.bake(_scene(), false)
 	print("[gi] baked in %.1f s" % ((Time.get_ticks_msec() - t0) / 1000.0))
 	# Blender traces its indirect in screen space with clamp_surface_indirect
 	# at 8.0, so its bounce is bounded in a way a voxel cone trace is not.
@@ -171,7 +173,7 @@ func _scale_lights(spec: String) -> void:
 			mult[kv[0].strip_edges()] = float(kv[1])
 
 	var scaled := 0
-	for n in _all_nodes(get_tree().current_scene):
+	for n in _all_nodes(_scene()):
 		if not (n is Light3D):
 			continue
 		for prefix in mult:
