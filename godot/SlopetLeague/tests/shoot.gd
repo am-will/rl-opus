@@ -69,6 +69,21 @@ const PLANS := {
 			{"tick": 330, "name": "12_ceiling"},
 		],
 	},
+	# Jump, then boost up into an aerial with the nose held back.
+	"aerial": {
+		"spawn": {"x": 0.0, "z": -22.0, "yaw": 0.0, "boost": 100.0},
+		"ball": {"p": [0.0, 6.0, 0.0]},
+		"input": [
+			{"from": 0, "to": 60, "throttle": 1.0, "boost": true},
+			{"from": 60, "to": 78, "throttle": 1.0, "boost": true, "jump": true},
+			{"from": 78, "to": 400, "boost": true, "pitch": -1.0},
+		],
+		"shots": [
+			{"tick": 100, "name": "13_aerial"},
+			{"tick": 140, "name": "14_aerial"},
+			{"tick": 175, "name": "15_aerial"},
+		],
+	},
 	# Static three-quarter look at the car beside the ball, for judging scale.
 	"scale": {
 		"spawn": {"x": 3.4, "z": 0.0, "yaw": PI * 0.5, "boost": 100.0},

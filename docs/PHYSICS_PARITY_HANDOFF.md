@@ -1,5 +1,11 @@
 # Physics parity — handoff
 
+> **Status: done, and the game is playable.** See [`PLAYING.md`](PLAYING.md) to
+> run it. What follows is the plan this work was done from; it is kept because
+> the reasoning still explains why the code looks the way it does. What actually
+> happened is recorded at the bottom, under **[What was built](#12-what-was-built)**
+> — read that first if you are picking this up.
+
 **The goal is feel, not architecture.** The target is Rocket League itself: a car
 that drives, jumps, flips, aerials and hits the ball the way the real game does.
 Everything in this document is in service of that and nothing else.
@@ -400,3 +406,112 @@ From the user, on record:
   never auto-correct their car for them. `config.ts` already honours this —
   `CAR.unstick` just hops you off the surface and lets you air-roll out, with a
   comment saying so explicitly. Preserve that.
+
+---
+
+## 12. What was built
+
+Everything above was followed. The oracle was built first, the port was verified
+against it rather than eyeballed, and the four things that turned out to be
+wrong were all found by measurement.
+
+### The harness
+
+`tools/trace/record_ts.mjs` runs the TypeScript build headless and dumps 14
+scripted scenarios; `godot/SlopetLeague/tests/record_trace.gd` runs the same
+scenarios in Godot from the same `tools/trace/scenarios.json`, so both sides
+provably execute an identical input program; `tools/trace/compare.py` diffs them
+per channel and `tools/trace/verify.py` drives the lot. It reports **14 passed**.
+
+Outcome parity, which is the number that matters more than any per-tick figure:
+
+| | TS oracle | Godot | |
+|---|---|---|---|
+| throttle-only top speed | 14.1000 | 14.1000 | exact |
+| boost top speed | 21.6181 | 21.5999 | −0.08% |
+| turn radius (steady-state circle) | 13.3602 | 13.3644 | +0.03% |
+| jump apex | 2.4546 | 2.4561 | +0.06% |
+| double-jump apex | 1.9451 | 1.9470 | +0.10% |
+| powerslide end position | (−14.4788, 20.7844) | (−14.4856, 20.7841) | −0.05% |
+| wall-ride apex (ceiling 20.44) | 20.2557 | 20.2570 | +0.01% |
+| ball speed after a straight hit | 13.6336 | 13.7877 | +1.1% |
+| off-centre deflection | −18.6° | −17.9° | 0.7° |
+
+Where it still differs, `verify.py` says why in a comment next to the tolerance
+rather than just widening it.
+
+### The four faults it found
+
+1. **Jolt queues `apply_impulse` until the solver runs, and a later
+   `linear_velocity = …` assignment discards the queue.** Rapier applies it to
+   the velocity immediately, and the TS build depends on that: it fires four
+   suspension impulses, re-reads the velocity, then writes it back in the drive
+   step. The car rested on its collision box at y = 0.181 instead of on its
+   springs at 0.201. The suspension now integrates its own impulses.
+   `tests/probe_impulse.gd` is the experiment.
+2. **Godot combines physics materials as `restitution = a + b`,
+   `friction = min(a, b)`** — Rapier picks a restitution rule per collider (the
+   ball asks for `Max`) and averages friction. The ball was bouncing at 0.9:
+   13.7 m/s off a 15.2 m/s drop against the oracle's 9.1. The values in
+   `rl_feel.gd`'s surface block are chosen so the *combined* numbers land on
+   RL's. `tests/probe_material.gd` is the measurement.
+3. **Jolt only disables manifold reduction for bodies that report contacts.**
+   With it on, entering the floor→wall fillet at 20 m/s collapsed several ramp
+   facets into one bad normal and threw the car back down the pitch at −3.9 m/s,
+   a clean e = 0.2 bounce off a surface that isn't there. Wall and ceiling
+   driving were impossible. `contact_monitor = true` on the car fixes it.
+4. **The `ball_drop` scenario dropped from 20 m, and the ceiling is at 20.44.**
+   A 0.9125 m ball centred at 20 starts *inside* it, so for a while both engines
+   were being compared on penetration recovery. Now 18 m.
+
+### Section 5, the car scale
+
+Closed, but not the way the section predicted. The exported glTF *does* carry
+scale and rotation on `Octane_Root`; the handoff's "the model still arrived at
+raw Blender scale" was measured from the mesh AABBs, which are local to that
+root, so the transform was invisible to the measurement. Multiplying our own
+scale on top of it produced a 0.63 m car.
+
+`Car._fit_model` now reads the four tyre meshes and derives the transform from
+them. Whatever the exporter does, the wheelbase lands on the *suspension's*
+wheelbase and the tyres end up exactly where the four rays put them. The car is
+a uniform 1.32× Octane, which is what `BODY_STRETCH = 1.35` asks for without
+stretching one axis against round wheels. `tools/export_octane.py` was not
+touched — it does not need to be.
+
+### Section 4a, the contact normal
+
+Closed. `Feel.HIT_FORWARD_SQUASH` adds the missing forward-component term. The
+trace harness records with it at 0 so the comparison against the TS build stays
+apples-to-apples; the game ships with it on.
+
+### Beyond the plan
+
+- **Bot opponent** (`scripts/bot.gd`), ported from `src/game/Bot.ts`. One note:
+  its flip follow-through is nearly inert, because `Bot.ts` holds jump through
+  the hold window and then presses again on the step it expires, and `Car`
+  edge-detects — so there is no fresh press and no dodge. Ported faithfully
+  rather than "fixed", since the TS build is the feel spec.
+- **Audio** (`scripts/game_audio.gd`), ported from `src/audio/Audio.ts`, which is
+  a pure Web Audio synth. Continuous voices run through an `AudioStreamGenerator`;
+  one-shots are pre-rendered to `AudioStreamWAV` at startup.
+- **Tests beyond the traces.** `probe_input.gd` drives the real InputMap path
+  rather than writing `car.input` directly. `probe_gameplay.gd` covers pads,
+  goals, demolitions and the kickoff reset — it caught a bug where a demolished
+  car respawned frozen and immovable. `soak.gd` runs eight simulated minutes of
+  random input and asserts nothing leaves the shell, goes NaN or breaks a cap.
+
+### Still open
+
+- **Nobody has played it yet.** Section 8 is explicit that a human saying it
+  feels like the TS build is the actual acceptance test, and that has not
+  happened. Everything above says the numbers agree.
+- The **hitbox stretch question** (section 5, "open question") was answered by
+  keeping `BODY_STRETCH` on the hitbox, because `config.ts` is the feel spec and
+  the traces pass against it. It has not been A/B'd against an unstretched box.
+- **No 2v2.** `KICKOFF_SETS` and the bot's role assignment are both ported and
+  both handle it; only the roster is missing.
+- **No menu, no match settings, no online.** `src/ui/Menu.ts`,
+  `src/core/Settings.ts` and the whole of `src/net/` are unported.
+- **Goal celebration is a screen flash and a camera shake**, not the TS build's
+  `explodeGoal` — no shockwave, no debris, no blast on the cars.
