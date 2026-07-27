@@ -452,7 +452,6 @@ func restart_match() -> void:
 # ---------------------------------------------------------------------------
 
 func _process(dt: float) -> void:
-	_handle_one_shots()
 	_recover_time_scale(dt)
 	_advance_clock(dt)
 	if audio:
@@ -478,14 +477,22 @@ func _process(dt: float) -> void:
 		hud.update_from(self)
 
 
-func _handle_one_shots() -> void:
-	if Input.is_action_just_pressed("rl_camera") and cam:
+## Driven by the event queue rather than polled from `_process`.
+##
+## `is_action_just_pressed` is true only on the frame the press arrived, so a
+## tap that starts and ends between two rendered frames is simply lost — 33 ms
+## was already enough to drop one here, and on a frame that takes 60 ms a normal
+## press goes missing. That is what "B does nothing" looks like from the
+## keyboard. The driving controls are unaffected: `player_input.gd` reads held
+## state, which cannot be missed this way.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("rl_camera") and cam:
 		cam.toggle_mode()
-	if Input.is_action_just_pressed("rl_reset_car"):
+	if event.is_action_pressed("rl_reset_car"):
 		reset_player()
-	if Input.is_action_just_pressed("rl_restart"):
+	if event.is_action_pressed("rl_restart"):
 		restart_match()
-	if Input.is_action_just_pressed("rl_mode"):
+	if event.is_action_pressed("rl_mode"):
 		# Free play is the default because "drive around and hit the ball" is
 		# what you want on the first run; N is how you get a real match with a
 		# clock, a countdown and a celebration.
@@ -493,7 +500,7 @@ func _handle_one_shots() -> void:
 		restart_match()
 		if hud:
 			hud.toast("Free play" if practice else "5:00 match")
-	if Input.is_action_just_pressed("rl_infinite_boost"):
+	if event.is_action_pressed("rl_infinite_boost"):
 		# Only the player's car: the point of the mode is practising aerials and
 		# kickoffs without a boost run, not handing the bot the same gift.
 		var on := not player_car.infinite_boost
@@ -502,21 +509,21 @@ func _handle_one_shots() -> void:
 		# single glyph in the corner and easy to miss.
 		if hud:
 			hud.toast("Infinite boost on" if on else "Infinite boost off")
-	if Input.is_action_just_pressed("rl_toggle_hud") and hud:
+	if event.is_action_pressed("rl_toggle_hud") and hud:
 		hud.visible = not hud.visible
-	if Input.is_action_just_pressed("rl_free_cam"):
+	if event.is_action_pressed("rl_free_cam"):
 		_toggle_free_cam()
-	if Input.is_action_just_pressed("rl_menu"):
+	if event.is_action_pressed("rl_menu"):
 		get_tree().quit()
 	if audio:
-		if Input.is_action_just_pressed("rl_mute"):
+		if event.is_action_pressed("rl_mute"):
 			var m := audio.toggle_mute()
 			if hud:
 				hud.toast("Sound off" if m else "Sound on")
 		var step := 0
-		if Input.is_action_just_pressed("rl_volume_up"):
+		if event.is_action_pressed("rl_volume_up"):
 			step = 1
-		elif Input.is_action_just_pressed("rl_volume_down"):
+		elif event.is_action_pressed("rl_volume_down"):
 			step = -1
 		if step != 0:
 			var pct := audio.change_volume(step)
