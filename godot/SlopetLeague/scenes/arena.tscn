@@ -64,7 +64,7 @@ volumetric_fog_ambient_inject = 0.0
 volumetric_fog_sky_affect = 0.0
 adjustment_enabled = true
 adjustment_contrast = 1.15
-adjustment_saturation = 1.12
+adjustment_saturation = 1.04
 
 [node name="Arena" type="Node3D"]
 

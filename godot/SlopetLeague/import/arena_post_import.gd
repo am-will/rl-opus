@@ -35,7 +35,7 @@ extends EditorScenePostImport
 # 20% of each other, which is why the bowl read flat; anything close to
 # physical needs the energy scaled up to match, hence the large number below.
 # 2.0 is true inverse-square, the same falloff Blender's 105 kW spots use.
-const FLOOD_ENERGY := 3000.0
+const FLOOD_ENERGY := 2600.0
 const FLOOD_RANGE := 420.0
 const FLOOD_ATTEN := 2.0
 const FLOOD_FOG := 1.6            # beam contribution to the volumetric fog
@@ -107,12 +107,52 @@ func _fix_materials(mi: MeshInstance3D) -> void:
 		var m: Material = mi.mesh.surface_get_material(i)
 		if not (m is StandardMaterial3D):
 			continue
+		if m.resource_name == "CF_Turf":
+			mi.set_surface_override_material(i, _turf_material(m))
+			continue
 		if vertex_coloured:
 			m.vertex_color_use_as_albedo = true
 		if m.emission_enabled:
 			var ceiling := LENS_EMISSION if lens else EMISSION_CAP
 			m.emission_energy_multiplier = minf(
 				m.emission_energy_multiplier, ceiling)
+
+
+## Swap the pitch onto shaders/turf.gdshader, keeping the baked maps.
+##
+## glTF delivers the turf as a flat albedo, a flat emission mask and one
+## uniform roughness -- no trace of the two-octave bump, the noise-driven
+## roughness ramp or the sheen that cf/materials.py gave it. A perfectly
+## uniform surface under strong lights is exactly what reads as cartoon.
+func _turf_material(src: StandardMaterial3D) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/turf.gdshader")
+	m.resource_name = "CF_Turf"
+	m.set_shader_parameter("albedo_tex", src.albedo_texture)
+	m.set_shader_parameter("emission_tex", src.emission_texture)
+	m.set_shader_parameter("noise_tex", _turf_noise())
+	# glTF carries Blender's 0.55 emission strength as the emissive factor.
+	m.set_shader_parameter("emission_strength",
+		src.emission.r * src.emission_energy_multiplier if src.emission_enabled else 0.0)
+	return m
+
+
+## One seamless fBm tile, sampled at two frequencies for the two octaves.
+## Baking it beats evaluating fBm per fragment by two orders of magnitude, and
+## the mip chain fades the fine octave out with distance instead of shimmering.
+func _turf_noise() -> NoiseTexture2D:
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	n.frequency = 0.02
+	n.fractal_octaves = 4
+	n.fractal_gain = 0.65          # Blender's Noise Roughness
+	var t := NoiseTexture2D.new()
+	t.noise = n
+	t.width = 512
+	t.height = 512
+	t.seamless = true
+	t.generate_mipmaps = true
+	return t
 
 
 # --- the 21 lights glTF cannot carry ----------------------------------------
