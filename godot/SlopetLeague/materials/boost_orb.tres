@@ -7,7 +7,7 @@
 
 [resource]
 shader = ExtResource("1_shader")
-shader_parameter/core_colour = Color(1, 0.86, 0.55, 1)
+shader_parameter/core_colour = Color(1, 0.78, 0.42, 1)
 shader_parameter/rim_colour = Color(1, 0.24, 0.03, 1)
 shader_parameter/shell_colour = Color(0.2, 0.07, 0.02, 1)
 shader_parameter/emission_strength = 3.0

@@ -132,6 +132,7 @@ than a rebuild.
 | 9 | Baked GI | **not done** — see below |
 | 10 | Anamorphic streaks, glow retune | done, `shaders/streaks.gdshader` |
 | 11 | TAA, alpha-to-coverage | done |
+| — | Boost pads rebuilt | done — see below |
 
 Notes on the ones with detail worth keeping:
 
@@ -163,6 +164,34 @@ strength of 8 standing in for Blender's 0.12. `G` toggles it.
 **Alpha-to-coverage, not blending**, for the containment net, hex canopy and goal net.
 Three fine lattices seen through each other with no depth writes sorted by draw order and
 read as a heavy white grid; through MSAA they resolve as thin wire.
+
+**The boost pads were the one thing that was actually wrong**, rather than merely
+unlit. They were a flat ring plus a tapered hex column of emission, and a tapered solid
+is a shape before it is a light — the shape being a traffic cone. Rebuilt on both sides:
+
+- *Blender* (`cf/props.py`, `cf/textures.py`): a painted plate from a two-cell atlas —
+  the 100 a four-armed star with four vents and a ringed core, the 12 a hex panel —
+  vertical curtains of light standing in the vents rather than a swept solid, a radial
+  ground bloom, and an orb over each of the six 100s. `const.pad_lobe` defines the star
+  outline once so the mesh and the art painted on it cannot drift apart.
+- *Godot*: `shaders/boost_glow.gdshader`, `boost_orb.gdshader` and `boost_halo.gdshader`,
+  assigned by `arena_post_import.gd` from `materials/*.tres`. Alpha driven by a node
+  graph has no glTF representation at all, so all three glowing parts arrive with
+  ALPHA = 1 — the same failure class as the team ramps, and the actual reason the cones
+  were solid. The curtains are additive with a scrolling noise erosion and a silhouette
+  fade; the orb is *shaded and opaque* so it takes a real specular off the floodlights
+  and reflects the arena, with the light inside it carried by EMISSION.
+
+**glTF flips V.** Blender's V runs 0 at the deck to 1 at the tip; the exporter flips it,
+so in Godot the deck is V = 1. Read unflipped, the fire hangs upside down — white-hot
+where it should be dissolving into air — and no still makes it obvious that that is what
+you are looking at. Confirmed by rendering `UV.y` into the frame, not assumed. Anything
+else here that shapes a falloff along a Blender UV has the same trap in it.
+
+Three close-up shots — `padbig`, `padsmall`, `padrow` — are in both `cf/shots.py` and
+`scripts/shot_cameras.gd` so the pads can be judged in either renderer at the same
+framing. Note that emissive geometry only lights the room here through the VoxelGI, so
+**rebake after touching a pad material**, or the old emission stays in the bake.
 
 ---
 
