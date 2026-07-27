@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="PackedScene" path="res://assets/champions_field.glb" id="1_arena"]
 [ext_resource type="Script" path="res://scripts/fly_camera.gd" id="2_fly"]
 [ext_resource type="Script" path="res://scripts/arena_setup.gd" id="3_setup"]
+[ext_resource type="Script" path="res://scripts/shot_cameras.gd" id="4_shots"]
 
 [sub_resource type="Environment" id="Env_1"]
 background_mode = 1
@@ -29,3 +30,6 @@ environment = SubResource("Env_1")
 [node name="FlyCam" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 14, 46)
 script = ExtResource("2_fly")
+
+[node name="ShotCams" type="Node3D" parent="."]
+script = ExtResource("4_shots")
