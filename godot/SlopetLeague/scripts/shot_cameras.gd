@@ -31,6 +31,9 @@ const SHOTS := {
 	# Square-on to one hero banner, on its own normal, so any stretch in the
 	# wordmark is the UV mapping and not the angle it is being read at.
 	"banner":    [Vector3(1995, -3032, 2450),   Vector3(2313, -8223, 3340), 50.0, 0.0],
+	# Nose to nose with the ball at kickoff. The panels are geometry, so the
+	# only way to tell whether they came across is to fill the frame with them.
+	"ball":      [Vector3(200, -700, 250),      Vector3(0, 0, 93),       55.0, 0.0],
 }
 
 
@@ -54,7 +57,12 @@ func _ready() -> void:
 		var cam := _build(name, SHOTS[name])
 		add_child(cam)
 		if name == want:
+			# Claiming the viewport here does not stick: `game.gd` spawns its
+			# ChaseCamera from its own _ready, which runs after every child's,
+			# and that camera makes itself current. Deferring puts this one last,
+			# so `--shot` frames the shot again instead of the car.
 			cam.current = true
+			cam.make_current.call_deferred()
 
 
 func _build(name: String, spec: Array) -> Camera3D:

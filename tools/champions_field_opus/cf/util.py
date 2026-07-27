@@ -46,6 +46,8 @@ def mesh_object(name, verts, faces, coll, materials=(), mat_index=None,
 
     `mat_index` is either None, an int applied to every face, or a per-face
     sequence. `uvs` is a per-loop sequence of (u, v) matching `faces` order.
+    `shade_smooth` is either a bool for the whole mesh or a per-face sequence,
+    for meshes that want smooth surfaces meeting at a hard edge.
     """
     me = bpy.data.meshes.new(name)
     me.from_pydata([(x * scale, y * scale, z * scale) for x, y, z in verts], [], list(faces))
@@ -67,9 +69,13 @@ def mesh_object(name, verts, faces, coll, materials=(), mat_index=None,
         flat = [c for uv in uvs for c in uv]
         layer.data.foreach_set("uv", flat)
 
-    if shade_smooth:
-        for poly in me.polygons:
-            poly.use_smooth = True
+    if shade_smooth is not False and shade_smooth is not None:
+        if isinstance(shade_smooth, bool):
+            flags = [True] * len(me.polygons)
+        else:
+            flags = list(shade_smooth)
+        for poly, sm in zip(me.polygons, flags):
+            poly.use_smooth = bool(sm)
 
     me.validate(verbose=False)
     ob = bpy.data.objects.new(name, me)

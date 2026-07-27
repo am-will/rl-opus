@@ -137,7 +137,7 @@ def main():
 
         props.build_goals(c_props, props.goal_materials(tex["hex"]))
         props.build_boost(c_props, props.boost_materials(tex["boost"]))
-        props.build_ball(c_props, tex["ball"])
+        props.build_ball(c_props)
         if not args.no_crowd:
             stands.build(c_stands)
         structure.build(U.collection('Structure', root), board_tex=tex['board'])

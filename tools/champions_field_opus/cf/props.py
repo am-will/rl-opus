@@ -1,6 +1,7 @@
 """Goal frames and nets, boost pads, and the ball."""
 
 import math
+import random
 
 from . import const as C
 from . import util as U
@@ -573,46 +574,193 @@ def build_boost(coll, mats):
 
 
 # --- ball -------------------------------------------------------------------
+#
+# The panels used to be a flat hex tile wrapped round a UV sphere, which is the
+# one thing a sphere will not take: an equirectangular map's rows converge at
+# the poles, so the hexes sheared as they climbed and collapsed into a rosette
+# on top. No texture fixes that -- a sphere has no distortion-free flat unwrap.
+#
+# So the panels are geometry now. Subdividing an icosahedron and taking its
+# dual gives a Goldberg polyhedron: every cell the same size, every cell a
+# hexagon apart from twelve pentagons, one on each original icosahedron vertex.
+# Those twelve are not a defect to be tuned out -- Euler forbids tiling a closed
+# surface with hexagons alone, which is why a real football has exactly twelve
+# pentagons too. What the ball no longer has anywhere is a stretched panel.
 
-# Panel tiling around / down the ball. The hex tile is 1.732:1 and v spans
-# half the u arc on a sphere, so V_TILE = U_TILE * 0.866 keeps them regular.
-U_TILE = 5.0
-V_TILE = 4.33
+BALL_FREQ = 3          # G(3,0): 12 pentagons + 80 hexagons, matching the old tiling
+BALL_GAP = 0.10        # corner inset toward the cell centre, share of cell radius
+BALL_FLARE = 0.30      # how much of that inset the chamfer gives back
+BALL_CHAMFER = 0.006   # chamfer drop, share of R
+BALL_SHELL = 0.976     # dark under-shell radius, share of R
+BALL_SKIRT = 0.958     # panel wall bottom -- inside the shell, so no gap opens
 
 
-def build_ball(coll, skin_img, rings=48, segs=64):
-    verts, faces, uvs = [], [], []
+def _unit(v):
+    n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _mix(a, b, t):
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t,
+            a[2] + (b[2] - a[2]) * t)
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _dot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def _icosahedron():
+    """Unit icosahedron, poles first.
+
+    Not the usual (0, +-1, +-t) form: that one puts an edge at the top of the
+    ball, and `verify.py` measures the ball's radius off its z extent, so a
+    dual cell has to be *centred* on each pole for the mesh to reach exactly R
+    there. Pole, upper ring of five, lower ring of five offset by half a step,
+    pole.
+    """
+    lat = math.atan(0.5)
+    verts = [(0.0, 0.0, 1.0)]
+    for band, sign in ((0.0, 1.0), (0.5, -1.0)):
+        for i in range(5):
+            a = math.tau * (i + band) / 5
+            verts.append((math.cos(lat) * math.cos(a),
+                          math.cos(lat) * math.sin(a), sign * math.sin(lat)))
+    verts.append((0.0, 0.0, -1.0))
+
+    faces = []
+    for i in range(5):
+        j = (i + 1) % 5
+        faces.append((0, 1 + i, 1 + j))          # north cap
+        faces.append((1 + i, 6 + i, 1 + j))      # upper band
+        faces.append((1 + j, 6 + i, 6 + j))      # lower band
+        faces.append((11, 6 + j, 6 + i))         # south cap
+    return verts, faces
+
+
+def _subdivide(verts, faces, freq):
+    """Class-I geodesic: split every triangle freq^2 ways, push out to the sphere."""
+    out_v, index, out_f = [], {}, []
+
+    def add(p):
+        n = _unit(p)
+        key = (round(n[0], 6), round(n[1], 6), round(n[2], 6))
+        if key not in index:
+            index[key] = len(out_v)
+            out_v.append(n)
+        return index[key]
+
+    for ia, ib, ic in faces:
+        a, b, c = verts[ia], verts[ib], verts[ic]
+        rows = []
+        for i in range(freq + 1):
+            row = []
+            for j in range(i + 1):
+                u, v, w = (freq - i) / freq, (i - j) / freq, j / freq
+                row.append(add((a[0] * u + b[0] * v + c[0] * w,
+                                a[1] * u + b[1] * v + c[1] * w,
+                                a[2] * u + b[2] * v + c[2] * w)))
+            rows.append(row)
+        for i in range(freq):
+            for j in range(i + 1):
+                out_f.append((rows[i][j], rows[i + 1][j], rows[i + 1][j + 1]))
+                if j < i:
+                    out_f.append((rows[i][j], rows[i + 1][j + 1], rows[i][j + 1]))
+    return out_v, out_f
+
+
+def _dual_cells(verts, faces):
+    """The Goldberg dual: (centre, corner ring) per geodesic vertex, wound CCW
+    seen from outside. A cell has as many corners as its vertex had triangles --
+    six everywhere except the twelve original icosahedron vertices."""
+    centres, incident = [], [[] for _ in verts]
+    for f in faces:
+        centres.append(_unit((sum(verts[k][0] for k in f) / 3.0,
+                              sum(verts[k][1] for k in f) / 3.0,
+                              sum(verts[k][2] for k in f) / 3.0)))
+        for k in f:
+            incident[k].append(len(centres) - 1)
+
+    cells = []
+    for vi, v in enumerate(verts):
+        # Sort the surrounding face centres by angle in the tangent plane. With
+        # (ref, perp, v) right-handed, increasing angle is CCW from outside.
+        ref = _unit(_cross(v, (0.0, 0.0, 1.0) if abs(v[2]) < 0.9 else (1.0, 0.0, 0.0)))
+        perp = _cross(v, ref)
+        ring = sorted(incident[vi],
+                      key=lambda fi: math.atan2(_dot(centres[fi], perp),
+                                                _dot(centres[fi], ref)))
+        cells.append((v, [centres[fi] for fi in ring]))
+    return cells
+
+
+def build_ball(coll, freq=BALL_FREQ, seed=23):
     R = C.BALL_R
     cz = C.BALL_REST_Z
+    verts, faces, mat_index, smooth = [], [], [], []
+
+    def put(d, r):
+        verts.append((d[0] * r, d[1] * r, cz + d[2] * r))
+        return len(verts) - 1
+
+    # Panels. Each is its own island -- nothing is shared with its neighbours,
+    # or with its own wall, so the tops shade smooth and every edge stays crisp.
+    rng = random.Random(seed)
+    gv, gf = _subdivide(*_icosahedron(), freq=freq)
+    for centre, corners in _dual_cells(gv, gf):
+        rim = [_unit(_mix(p, centre, BALL_GAP)) for p in corners]
+        lip = [_unit(_mix(rim[k], corners[k], BALL_FLARE)) for k in range(len(rim))]
+        mid = [_unit(_mix(p, centre, 0.5)) for p in rim]
+
+        n = len(rim)
+        top = put(centre, R)
+        mid_i = [put(d, R) for d in mid]
+        rim_i = [put(d, R) for d in rim]
+        lip_i = [put(d, R * (1.0 - BALL_CHAMFER)) for d in lip]
+        wall_t = [put(d, R * (1.0 - BALL_CHAMFER)) for d in lip]
+        wall_b = [put(d, R * BALL_SKIRT) for d in lip]
+
+        shade = rng.randrange(3)
+        for k in range(n):
+            k2 = (k + 1) % n
+            faces.append((top, mid_i[k], mid_i[k2]))
+            faces.append((mid_i[k], rim_i[k], rim_i[k2], mid_i[k2]))
+            faces.append((rim_i[k], lip_i[k], lip_i[k2], rim_i[k2]))
+            faces.append((wall_t[k], wall_b[k], wall_b[k2], wall_t[k2]))
+            smooth.extend([True, True, True, False])
+            mat_index.extend([shade] * 4)
+
+    # Dark under-shell. The panel walls end below its surface, so the seams read
+    # as grooves between panels rather than as a hole through to the inside.
+    rings, segs = 24, 48
+    base = len(verts)
     for i in range(rings + 1):
         phi = math.pi * i / rings
         for j in range(segs):
             th = math.tau * j / segs
-            verts.append((R * math.sin(phi) * math.cos(th),
-                          R * math.sin(phi) * math.sin(th),
-                          cz + R * math.cos(phi)))
+            put((math.sin(phi) * math.cos(th), math.sin(phi) * math.sin(th),
+                 math.cos(phi)), R * BALL_SHELL)
     for i in range(rings):
         for j in range(segs):
             j2 = (j + 1) % segs
-            a, b = i * segs + j, i * segs + j2
-            c, d = (i + 1) * segs + j, (i + 1) * segs + j2
+            a, b = base + i * segs + j, base + i * segs + j2
+            c, d = base + (i + 1) * segs + j, base + (i + 1) * segs + j2
             faces.append((a, c, d, b))
-            uvs.extend([(j / segs * U_TILE, i / rings * V_TILE),
-                        (j / segs * U_TILE, (i + 1) / rings * V_TILE),
-                        (j2 / segs * U_TILE if j2 else U_TILE,
-                         (i + 1) / rings * V_TILE),
-                        (j2 / segs * U_TILE if j2 else U_TILE,
-                         i / rings * V_TILE)])
+            smooth.append(True)
+            mat_index.append(3)
 
-    # Hex-panel skin baked as real colour, so it survives glTF export intact.
-    mat = U.principled("CF_Ball", base=(0.62, 0.65, 0.69), roughness=0.32,
-                       metallic=0.15, coat=0.5)
-    nt = mat.node_tree
-    tex = nt.nodes.new("ShaderNodeTexImage")
-    tex.image = skin_img
-    tex.extension = "REPEAT"
-    tex.location = (-620, 220)
-    nt.links.new(tex.outputs["Color"], U.bsdf_of(mat).inputs["Base Color"])
+    # Three near-identical greys, dealt out per panel, for the faint tonal
+    # variation the old skin texture carried.
+    mats = [U.principled(nm, base=col, roughness=0.30, metallic=0.15, coat=0.55)
+            for nm, col in (("CF_Ball", (0.620, 0.650, 0.685)),
+                            ("CF_Ball_B", (0.585, 0.615, 0.655)),
+                            ("CF_Ball_C", (0.655, 0.685, 0.715)))]
+    mats.append(U.principled("CF_Ball_Seam", base=(0.045, 0.050, 0.062),
+                             roughness=0.55, metallic=0.0))
 
-    return U.mesh_object("CF_Ball", verts, faces, coll, materials=[mat],
-                         uvs=uvs, shade_smooth=True)
+    return U.mesh_object("CF_Ball", verts, faces, coll, materials=mats,
+                         mat_index=mat_index, shade_smooth=smooth)
