@@ -19,6 +19,8 @@ enum Phase { COUNTDOWN, PLAYING, GOAL, ENDED, PAUSED }
 
 const CAR_SCENE := preload("res://scenes/car.tscn")
 const BALL_SCENE := preload("res://scenes/ball.tscn")
+## Free play has no celebration phase to borrow, so it gets a short one.
+const PRACTICE_GOAL_PAUSE := 1.8
 
 @export var arena_root_name := "ChampionsField"
 ## Free play: no clock, no countdown, goals reset the ball and nothing else.
@@ -59,6 +61,8 @@ var last_scorer := -1
 ## Cumulative, for the harnesses: a demolished car respawns after a second, so
 ## `wrecked` is only true for a 120-tick window and is easy to sample past.
 var demolition_count := 0
+var goal_fx: GoalFx
+var _rng := RandomNumberGenerator.new()
 
 var _input := PlayerInput.new()
 var _player_intent := CarInput.new()
@@ -103,6 +107,10 @@ func _ready() -> void:
 	hud = HUD.new()
 	hud.name = "HUD"
 	add_child(hud)
+
+	goal_fx = GoalFx.new()
+	goal_fx.name = "GoalFx"
+	add_child(goal_fx)
 
 	# A scripted run must sound like nothing at all, so the trace suite and the
 	# screenshot harness never see an audio node.
@@ -309,18 +317,27 @@ func _on_goal(scorer: int) -> void:
 		audio.goal()
 	score[scorer] += 1
 	last_scorer = scorer
-	if practice:
-		kickoff()
-		if hud:
-			hud.flash_goal(scorer)
-		return
-	phase = Phase.GOAL
-	goal_timer = Feel.MATCH_GOAL_CELEBRATION
-	Engine.time_scale = Feel.MATCH_SLOWMO_SCALE
-	if cam:
-		cam.add_shake(2.0)
 	if hud:
 		hud.flash_goal(scorer)
+	if cam:
+		cam.add_shake(2.0)
+	# The blast throws every car within 28 m, so it has to happen before the
+	# kickoff resets them.
+	if goal_fx:
+		goal_fx.fire(
+			ball.pos,
+			HUD.BLUE if scorer == Feel.TEAM_BLUE else HUD.ORANGE,
+			cars,
+			_rng
+		)
+	phase = Phase.GOAL
+	if practice:
+		# Free play still pauses on a goal, or the blast and the banner are gone
+		# before you have seen either — just a short one, and no slow motion.
+		goal_timer = PRACTICE_GOAL_PAUSE
+		return
+	goal_timer = Feel.MATCH_GOAL_CELEBRATION
+	Engine.time_scale = Feel.MATCH_SLOWMO_SCALE
 
 
 ## Clock and phase timers. Runs once per RENDERED frame on the scaled dt, the
@@ -346,7 +363,10 @@ func _advance_clock(dt: float) -> void:
 					phase = Phase.ENDED
 		Phase.GOAL:
 			goal_timer -= dt
-			if goal_timer <= 0.0:
+			if goal_timer <= 0.0 and practice:
+				kickoff()
+				phase = Phase.PLAYING
+			elif goal_timer <= 0.0:
 				Engine.time_scale = 1.0
 				if overtime or (clock <= 0.0 and score[0] != score[1]):
 					phase = Phase.ENDED

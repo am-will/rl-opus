@@ -67,6 +67,7 @@ func _run_stage() -> bool:
 		4:
 			print("\n-- goals")
 			car.set_active(false)
+			_resume()
 			_game.score = [0, 0]
 			_game.ball.reset(
 				Vector3(0.0, 1.5, Feel.ARENA_HALF_LENGTH - 1.0), Vector3(0.0, 0.0, 22.0)
@@ -75,6 +76,7 @@ func _run_stage() -> bool:
 		5:
 			_check("ball into the orange net scores for blue", float(_game.score[0]), 1.0)
 			_check("and only once", float(_game.score[1]), 0.0)
+			_resume()
 			_game.score = [0, 0]
 			_game.ball.reset(
 				Vector3(0.0, 1.5, -Feel.ARENA_HALF_LENGTH + 1.0), Vector3(0.0, 0.0, -22.0)
@@ -83,6 +85,7 @@ func _run_stage() -> bool:
 		6:
 			_check("ball into the blue net scores for orange", float(_game.score[1]), 1.0)
 			# Wide of the post is not a goal.
+			_resume()
 			_game.score = [0, 0]
 			_game.ball.reset(
 				Vector3(Feel.GOAL_HALF_WIDTH + 2.0, 1.5, Feel.ARENA_HALF_LENGTH - 4.0),
@@ -95,6 +98,7 @@ func _run_stage() -> bool:
 		# --- demolition --------------------------------------------------------
 		8:
 			print("\n-- demolitions")
+			_resume()
 			if _game.cars.size() < 2:
 				print("  (no second car; skipped)")
 				_stage = 98
@@ -167,6 +171,14 @@ func _run_stage() -> bool:
 			return true
 	_stage += 1
 	return false
+
+
+## Scoring leaves free play mid-celebration, and it kicks off out of that 1.8 s
+## later — which would both stop the next goal registering and respawn the cars
+## under the demolition setup.
+func _resume() -> void:
+	_game.phase = Game.Phase.PLAYING
+	_game.goal_timer = 0.0
 
 
 func _check(label: String, got: float, want: float, tol := 0.01) -> void:

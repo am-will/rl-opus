@@ -73,11 +73,16 @@ func _on_post(_dt: float) -> void:
 		for c in _game.cars:
 			_roll(c.input)
 
+	# A goal blast deliberately overshoots the cap — the TS build's blastCars
+	# does the same, and Car._clamp_speed pulls it back on the very next tick.
+	# Sampling here is between the two, so don't call it a fault.
+	var celebrating := _game.phase == Game.Phase.GOAL
 	for c in _game.cars:
 		if not c.active:
 			continue
-		_check("car", c.pos, c.vel, Feel.CAR_MAX_SPEED)
-		_worst_speed = maxf(_worst_speed, c.vel.length())
+		_check("car", c.pos, c.vel, INF if celebrating else Feel.CAR_MAX_SPEED)
+		if not celebrating:
+			_worst_speed = maxf(_worst_speed, c.vel.length())
 		_min_y = minf(_min_y, c.pos.y)
 	_check("ball", _game.ball.pos, _game.ball.vel, Feel.BALL_MAX_SPEED)
 	_worst_ball_speed = maxf(_worst_ball_speed, _game.ball.vel.length())

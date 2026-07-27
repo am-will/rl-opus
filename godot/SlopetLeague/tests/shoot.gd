@@ -84,6 +84,18 @@ const PLANS := {
 			{"tick": 175, "name": "15_aerial"},
 		],
 	},
+	# Score, and photograph the blast.
+	"goal": {
+		"spawn": {"x": 2.0, "z": 44.0, "yaw": 0.0, "boost": 100.0},
+		"ball": {"p": [0.0, 1.2, 48.0], "v": [0.0, 1.0, 16.0]},
+		"goals": true,
+		"input": [{"from": 0, "to": 400, "throttle": 1.0, "boost": true}],
+		"shots": [
+			{"tick": 40, "name": "16_goal"},
+			{"tick": 56, "name": "17_goal"},
+			{"tick": 100, "name": "18_goal"},
+		],
+	},
 	# Static three-quarter look at the car beside the ball, for judging scale.
 	"scale": {
 		"spawn": {"x": 3.4, "z": 0.0, "yaw": PI * 0.5, "boost": 100.0},
@@ -121,7 +133,7 @@ func _initialize() -> void:
 	var ps := load("res://scenes/game.tscn") as PackedScene
 	_game = ps.instantiate() as Game
 	_game.external_input = true
-	_game.enable_goals = false
+	_game.enable_goals = bool(_plan.get("goals", false))
 	root.add_child(_game)
 
 
@@ -144,7 +156,10 @@ func _setup() -> void:
 	)
 	var b: Dictionary = _plan.get("ball", {})
 	var bp: Array = b.get("p", [0.0, Feel.BALL_RADIUS + 0.02, 0.0])
-	_game.ball.reset(Vector3(bp[0], bp[1], bp[2]))
+	var bv: Array = b.get("v", [0.0, 0.0, 0.0])
+	_game.ball.reset(
+		Vector3(bp[0], bp[1], bp[2]), Vector3(bv[0], bv[1], bv[2])
+	)
 	if _plan.has("camera"):
 		var cs: Dictionary = _plan["camera"]
 		_static_cam = Camera3D.new()
