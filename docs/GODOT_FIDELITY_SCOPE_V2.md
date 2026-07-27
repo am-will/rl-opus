@@ -200,12 +200,33 @@ enough to show it, so it is paying cost for very little.
 
 ## A6. Grade and post
 
-**Already demonstrated.** Ambient at 0.35, glow levels 1–2 enabled and 5–7 pulled
-down, `glow_hdr_threshold` 1.3, `tonemap_agx_contrast` 1.55 → 1.9, saturation
-1.05 produces deeper blacks and boost pads with a hot core instead of a flat
-disc. That is a free win available today.
-
-- **A6.1** Fold the tested grade into `arena.tscn` as the default.
+> **A6.1 was attempted and mostly did not survive measurement. Read this before
+> spending time here.**
+>
+> The first A/B changed ambient, glow, contrast and saturation together and
+> looked like a clear win. Separating the four variables and measuring each on
+> `hero`, `kickoff` and `broadcast` gave a different answer:
+>
+> | change | result |
+> |---|---|
+> | `ambient_light_energy` 1.0 → 0.35 | **zero effect.** 0.35 and 0.55 produced frames identical to 1.0 in all five regions. The night sky is dark; against 39 lights and the emissive geometry the sky ambient contributes essentially nothing. The `--ambient` comment in `arena_setup.gd` is describing a problem this scene does not have. |
+> | `adjustment_saturation` 0.95 → 1.05 | **measurably worse.** Pitch saturation went from +0.14 over reference to +0.33. Reverted. |
+> | `tonemap_agx_contrast` 1.55 → 1.9 | **measurably worse** against the reference: roof −17.2 → −27.9, boards −0.6 → −11.7. Pure taste, and not defensible while the reference is the only measure. Reverted. |
+> | glow curve retune | **kept.** Small and real. |
+>
+> The glow retune shipped: levels 1–2 were at **zero**, so there was no tight
+> bloom at all — only wide levels, which is a veil rather than a bloom and gave
+> point emissives no hot core. Now 0.6/0.8/0.7 on 1–3 and 0.4/0.2/0.0 on 5–7,
+> `glow_intensity` 0.45 → 0.9, `glow_hdr_threshold` 1.0 → 1.3.
+>
+> It costs a little against the reference (`hero` roof −17.2 → −20.4, boards
+> −0.6 → −2.7) because the removed veil was lifting those regions. FRAME stays
+> within ~1 point on all three shots. Visible improvement is on **near** boost
+> pads; at distance it is marginal.
+>
+> **The lesson is A8's.** Grade work measured against a rasterised reference
+> mostly re-derives that reference. Do A8 before spending more time in this
+> section.
 - **A6.2** `glow_map` is present — use it for lens dirt on the floodlights.
 - **A6.3** `adjustment_color_correction` takes a LUT. Author a real film grade
   rather than a saturation scalar.
@@ -259,7 +280,7 @@ wrong one.
 |---|---|---|
 | 1 | **A8** raise the target | everything downstream is measured against it |
 | 2 | **A1.3** blob shadows | biggest visible win, smallest effort |
-| 3 | **A6.1** ship the tested grade | free, already proven |
+| 3 | ~~**A6.1** ship the tested grade~~ | **done, and mostly reverted — see A6** |
 | 4 | **A3.1** AA/scaling A/B | decides whether A2's detail survives to the screen |
 | 5 | **A2.1 / A2.2** turf detail + line decals | the close-range fix |
 | 6 | **A1.1 / A1.2** real shadow tuning | harder, and A1.3 buys time |
