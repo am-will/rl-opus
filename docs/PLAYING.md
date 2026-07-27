@@ -51,6 +51,7 @@ into an opponent and you demolish them.
 
 ```bash
 python3 tools/trace/verify.py                                                    # physics vs the TypeScript build
+python3 tools/trace/compare_config.py                                            # every constant vs src/config.ts
 godot --path godot/SlopetLeague --headless --script tests/probe_gameplay.gd      # pads, goals, demos, kickoff
 godot --path godot/SlopetLeague --headless --script tests/probe_input.gd         # the real keyboard path
 godot --path godot/SlopetLeague --headless --script tests/soak.gd -- --ticks 60000
