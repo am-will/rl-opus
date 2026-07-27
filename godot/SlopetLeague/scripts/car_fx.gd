@@ -6,14 +6,28 @@ extends Node3D
 ## script. Everything here is presentation — it reads car state and never writes
 ## any, which keeps it out of the physics path entirely.
 
+## Body paint, LINEAR — `BaseMaterial3D.albedo_color` goes to the shader raw, so
+## these are not the sRGB values a colour picker would show. Measured against
+## the RL promo shot in `assets/octane_reference/`: its paint sits at sRGB
+## #1054d3, hue 219, saturation 0.92, and these land within a degree of that
+## once the sRGB conversion is undone. The old pair were both a good deal
+## lighter and about 10 degrees toward cyan, which is most of why the car read
+## as powder blue rather than as Rocket League blue.
 const TEAM_PAINT := [
-	Color(0.20, 0.52, 0.95),  # blue
-	Color(1.0, 0.45, 0.10),  # orange
+	Color(0.015, 0.115, 0.72),  # blue
+	Color(0.76, 0.105, 0.008),  # orange
 ]
+## Emission tint. Same hue as the paint rather than a pale wash of it: a
+## desaturated glow over the panels is exactly what bleached the colour out.
 const TEAM_GLOW := [
-	Color(0.4, 0.8, 1.0),
-	Color(1.0, 0.69, 0.4),
+	Color(0.10, 0.42, 1.0),
+	Color(1.0, 0.30, 0.03),
 ]
+
+## The two shell materials, which is what the shell meshes actually differ by --
+## their NAMES do not. See _paint.
+const MAT_PAINT := "Octane_Body_Blue"
+const MAT_CHASSIS := "Octane_Chassis"
 ## Flame is RL's blue-white core rather than the team colour — it reads as heat.
 const FLAME_HOT := Color(0.75, 0.88, 1.0)
 const FLAME_COOL := Color(0.25, 0.55, 1.0)
@@ -136,32 +150,88 @@ func _build_streaks() -> void:
 	add_child(_streaks)
 
 
-## Team paint on the shell. The Octane's body texture is a light grey base, so a
-## straight albedo multiply reads as a paint job rather than a colour wash, and
-## the rim of emission picks the car out against the pitch at distance.
+## Team paint on the shell.
+##
+## Selection is by MATERIAL, not by node name. The glTF calls both shell meshes
+## `Octane_Body_*`, but only `Octane_Body_0` is the painted shell —
+## `Octane_Body_1` is the chassis: engine block, headers, roll cage, nudge bar,
+## authored as a real albedo map of dark metals with a red block. The old
+## `*Body*` name match painted that as well, and a red engine multiplied by team
+## blue lands on near-black, so the entire back of the car collapsed into one
+## flat blue-grey mass with no material separation left in it. Nothing was
+## missing; it had been painted over.
+##
+## The shell's own texture is a MASK, not a colour map: white over the panels
+## that take paint, black over the trim, the vents and the window surrounds. So
+## the albedo multiply IS the paint job, and driving emission through the same
+## mask keeps the trim from glowing along with the panels.
 func _paint(car: Car) -> void:
 	var model := car.get_node_or_null("Model")
 	if model == null:
 		return
 	var paint: Color = TEAM_PAINT[clampi(car.team, 0, 1)]
 	var glow: Color = TEAM_GLOW[clampi(car.team, 0, 1)]
-	for n in model.find_children("*Body*", "MeshInstance3D", true, false):
+	var painted := 0
+	for n in model.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		for s in mi.mesh.get_surface_count():
 			# get_active_material resolves overrides; surface_get_material alone
-			# comes back null on some glTF imports and we would paint over the
-			# body texture with flat colour.
-			var base := mi.get_active_material(s)
-			var mat: StandardMaterial3D = (
-				base.duplicate() if base is StandardMaterial3D else StandardMaterial3D.new()
-			)
-			mat.albedo_color = paint
-			mat.metallic = 0.35
-			mat.roughness = 0.35
-			mat.emission_enabled = true
-			mat.emission = glow
-			mat.emission_energy_multiplier = 0.12
-			mi.set_surface_override_material(s, mat)
+			# comes back null on some glTF imports.
+			var base := mi.get_active_material(s) as BaseMaterial3D
+			if base == null:
+				continue
+			match base.resource_name:
+				MAT_PAINT:
+					mi.set_surface_override_material(s, _shell_material(base, paint, glow))
+					painted += 1
+				MAT_CHASSIS:
+					mi.set_surface_override_material(s, _chassis_material(base))
+	if painted == 0:
+		push_warning("car: no '%s' surface found; the car is unpainted" % MAT_PAINT)
+
+
+## Automotive paint: a coloured dielectric under a clear coat, not a metal.
+##
+## The glTF authors the shell at metallic 0.48, which is a flake paint, and a
+## metal takes its colour from what it reflects — under this arena's white
+## floodlights that is most of why the panels came out closer to the sky than to
+## the team. Dropping metallic to zero puts the colour back in the diffuse, and
+## the gloss then comes from the coat, where it belongs.
+##
+## Godot's glTF importer drops KHR_materials_clearcoat outright (the .glb asks
+## for 0.5), and the coat is most of what makes car paint read as car paint —
+## the tight white highlight that slides along a fender is the coat, not the
+## paint under it. Put it back, harder than authored: RL's cars are showroom.
+func _shell_material(base: BaseMaterial3D, paint: Color, glow: Color) -> StandardMaterial3D:
+	var mat := base.duplicate() as StandardMaterial3D
+	mat.albedo_color = paint
+	mat.metallic = 0.0
+	mat.metallic_specular = 0.6
+	mat.roughness = 0.26
+	mat.clearcoat_enabled = true
+	mat.clearcoat = 0.9
+	mat.clearcoat_roughness = 0.04
+	# Enough to hold the team colour at the far end of the pitch, no more. The
+	# mask keeps it off the trim; MULTIPLY is what makes the texture a mask
+	# rather than something added on top of it.
+	mat.emission_enabled = true
+	mat.emission = glow
+	mat.emission_energy_multiplier = 0.09
+	mat.emission_texture = mat.albedo_texture
+	mat.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+	return mat
+
+
+## The chassis keeps its own texture and its own colours — it is not team
+## coloured on a real Octane either. All this does is put back the clear coat
+## the importer dropped, which is what lifts the headers and the tank off the
+## block instead of leaving them one matte grey.
+func _chassis_material(base: BaseMaterial3D) -> StandardMaterial3D:
+	var mat := base.duplicate() as StandardMaterial3D
+	mat.clearcoat_enabled = true
+	mat.clearcoat = 0.3
+	mat.clearcoat_roughness = 0.12
+	return mat
 
 
 # ---------------------------------------------------------------------------

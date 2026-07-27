@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://tests/octane_shot.gd" id="1_shot"]
+[ext_resource type="PackedScene" path="res://scenes/arena.tscn" id="2_arena"]
+
+[node name="OctaneShot" type="Node3D"]
+script = ExtResource("1_shot")
+
+[node name="Arena" parent="." instance=ExtResource("2_arena")]
