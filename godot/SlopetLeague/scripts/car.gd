@@ -138,6 +138,8 @@ func _ready() -> void:
 		1.0 / (k * (s.x * s.x + s.y * s.y))
 	)
 
+	_fit_model()
+
 	wheels.clear()
 	for i in Feel.WHEEL_OFFSETS.size():
 		wheels.append({
@@ -147,6 +149,86 @@ func _ready() -> void:
 			"spin": 0.0,
 		})
 	sync()
+
+
+# ---------------------------------------------------------------------------
+# Visual model
+# ---------------------------------------------------------------------------
+
+## Scale and orient the Octane mesh from its own wheel positions.
+##
+## Not a hard-coded transform, because the exported glTF carries a scale and a
+## rotation on `Octane_Root` that nothing else in the repo agrees on — measuring
+## the mesh AABBs suggests raw Blender units, measuring the rendered result says
+## 0.337. Reading it off the tyres removes the argument: whatever the exporter
+## did, the wheelbase ends up at the suspension's wheelbase and the tyres end up
+## exactly where the four rays put them, so the car cannot look like it is
+## hovering or sunk.
+##
+## The car is deliberately a 1.32x Octane: config.ts's BODY_STRETCH of 1.35 sets
+## the hitbox at 1.593 m long against a stock 1.205, and the model follows it
+## UNIFORMLY rather than being stretched along one axis, which would leave round
+## wheels on a long body.
+func _fit_model() -> void:
+	var model := get_node_or_null("Model") as Node3D
+	if model == null:
+		return
+	model.transform = Transform3D.IDENTITY
+
+	var fl := _tire(model, "Front_Left")
+	var fr := _tire(model, "Front_Right")
+	var rl := _tire(model, "Rear_Left")
+	var rr := _tire(model, "Rear_Right")
+	if fl == null or fr == null or rl == null or rr == null:
+		push_warning("car: Octane tyre meshes not found; model left unscaled")
+		return
+
+	# Positions in the model's own space, with our transform taken out.
+	var inv := model.global_transform.affine_inverse()
+	var p_fl := inv * fl.global_position
+	var p_fr := inv * fr.global_position
+	var p_rl := inv * rl.global_position
+	var p_rr := inv * rr.global_position
+
+	var front := (p_fl + p_fr) * 0.5
+	var rear := (p_rl + p_rr) * 0.5
+	var fwd := front - rear
+	var wheelbase := fwd.length()
+	if wheelbase < 1e-4:
+		return
+	fwd /= wheelbase
+
+	var lateral := (p_fl - p_fr).normalized()
+	var up_v := lateral.cross(fwd).normalized()
+	# The body sits above the wheels; use that to settle the sign.
+	var body := model.find_child("*Body_0*", true, false) as Node3D
+	if body:
+		if up_v.dot(inv * body.global_position - front) < 0.0:
+			up_v = -up_v
+	# Re-orthogonalise in case the four tyres aren't perfectly coplanar.
+	var side := up_v.cross(fwd).normalized()
+	up_v = fwd.cross(side).normalized()
+
+	# The suspension's wheelbase, so the tyres land on the rays.
+	var target: float = absf(Feel.WHEEL_OFFSETS[0].z - Feel.WHEEL_OFFSETS[2].z)
+	var s := target / wheelbase
+
+	# M maps model-local axes to (side, up, fwd); its inverse turns the model to
+	# face +Z with +Y up, which is the convention the physics uses.
+	var m := Basis(side, up_v, fwd)
+	var rot := m.transposed()
+	var pivot := (front + rear) * 0.5
+	# Wheel centres sit at the suspension's rest height, so the car rides on its
+	# tyres rather than through them.
+	var rest_y: float = Feel.WHEEL_OFFSETS[0].y - (Feel.WHEEL_REST_LEN - Feel.WHEEL_RADIUS)
+	model.transform = Transform3D(
+		rot.scaled(Vector3(s, s, s)),
+		Vector3(0.0, rest_y, 0.0) - (rot * pivot) * s
+	)
+
+
+func _tire(model: Node3D, corner: String) -> Node3D:
+	return model.find_child("*%s_Tire*" % corner, true, false) as Node3D
 
 
 # ---------------------------------------------------------------------------

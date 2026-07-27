@@ -340,6 +340,10 @@ func _process(dt: float) -> void:
 	ball.sync()
 
 	if cam and not _free_cam:
+		# The arena glTF ships eleven Camera3Ds and shot_cameras.gd adds more;
+		# any of them can take the viewport back. Just keep claiming it.
+		if not cam.current:
+			cam.current = true
 		cam.update(player_car, ball, dt)
 	if hud:
 		hud.update_from(self)

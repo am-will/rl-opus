@@ -14,4 +14,3 @@ script = ExtResource("1_car")
 shape = SubResource("CarShape_1")
 
 [node name="Model" parent="." instance=ExtResource("2_octane")]
-transform = Transform3D(0, 0, -0.53048, 0, 0.53048, 0, 0.53048, 0, 0, 0, -0.212915, 0)
