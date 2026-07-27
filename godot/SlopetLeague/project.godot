@@ -37,6 +37,11 @@ common/max_physics_steps_per_frame=16
 
 [rendering]
 
+; MoltenVK on this machine cannot persist Godot's pipeline cache, so every
+; Vulkan run recompiles every shader: nine minutes against Metal's twenty-five
+; seconds. Default it here so a plain `godot --path ...` is usable.
+rendering_device/driver.macos="metal"
+
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
 environment/ssao/quality=3

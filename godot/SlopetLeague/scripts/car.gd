@@ -490,7 +490,11 @@ func _update_suspension(dt: float) -> void:
 		lin_impulse += impulse
 		ang_impulse += r.cross(impulse)
 
-		state["spin"] = float(state["spin"]) + (fwd_speed / Feel.WHEEL_RADIUS) * dt
+		# Wrapped: this is only ever a visual angle, and left to run it reaches
+		# six figures in a long session and starts losing precision.
+		state["spin"] = fmod(
+			float(state["spin"]) + (fwd_speed / Feel.WHEEL_RADIUS) * dt, TAU
+		)
 
 	if lin_impulse != Vector3.ZERO or ang_impulse != Vector3.ZERO:
 		linear_velocity += lin_impulse / Feel.CAR_MASS
