@@ -14,8 +14,8 @@ extends Node3D
 ## lighter and about 10 degrees toward cyan, which is most of why the car read
 ## as powder blue rather than as Rocket League blue.
 const TEAM_PAINT := [
-	Color(0.015, 0.115, 0.72),  # blue
-	Color(0.76, 0.105, 0.008),  # orange
+	Color(0.045, 0.130, 0.78),  # blue
+	Color(0.85, 0.335, 0.012),  # orange
 ]
 ## Emission tint. Same hue as the paint rather than a pale wash of it: a
 ## desaturated glow over the panels is exactly what bleached the colour out.
@@ -24,10 +24,19 @@ const TEAM_GLOW := [
 	Color(1.0, 0.30, 0.03),
 ]
 
-## The two shell materials, which is what the shell meshes actually differ by --
-## their NAMES do not. See _paint.
+## The model's materials are addressed by name, because the mesh names lie —
+## `Octane_Body_1` is the chassis. See _dress_model.
 const MAT_PAINT := "Octane_Body_Blue"
 const MAT_CHASSIS := "Octane_Chassis"
+const MAT_RIM := "Octane_OEM_Rim"
+const MAT_DISC := "Brake_Disc"
+const MAT_HUB := "Hub_Steel"
+
+## The OEM wheel's albedo map. It exists in the source model, but the .glb only
+## carries three images — body, chassis, tyre — so the exporter dropped this one
+## on the way out and the rim came through as bare metal. The mesh kept its UVs,
+## so putting the map back is all it takes.
+const RIM_ALBEDO := preload("res://assets/octane_rim_albedo.png")
 ## Flame is RL's blue-white core rather than the team colour — it reads as heat.
 const FLAME_HOT := Color(0.75, 0.88, 1.0)
 const FLAME_COOL := Color(0.25, 0.55, 1.0)
@@ -150,7 +159,8 @@ func _build_streaks() -> void:
 	add_child(_streaks)
 
 
-## Team paint on the shell.
+## Team paint on the shell, and repairs to everything the export lost on the way
+## out of Blender.
 ##
 ## Selection is by MATERIAL, not by node name. The glTF calls both shell meshes
 ## `Octane_Body_*`, but only `Octane_Body_0` is the painted shell —
@@ -165,14 +175,15 @@ func _build_streaks() -> void:
 ## that take paint, black over the trim, the vents and the window surrounds. So
 ## the albedo multiply IS the paint job, and driving emission through the same
 ## mask keeps the trim from glowing along with the panels.
+## Searched from the CAR, not from `Model`: `_build_wheel_pivots` has already
+## reparented all twenty-four wheel meshes onto pivots hanging off the car by the
+## time this runs, so anything looking under the model alone sees a body, a
+## chassis and no wheels at all.
 func _paint(car: Car) -> void:
-	var model := car.get_node_or_null("Model")
-	if model == null:
-		return
 	var paint: Color = TEAM_PAINT[clampi(car.team, 0, 1)]
 	var glow: Color = TEAM_GLOW[clampi(car.team, 0, 1)]
 	var painted := 0
-	for n in model.find_children("*", "MeshInstance3D", true, false):
+	for n in car.find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		for s in mi.mesh.get_surface_count():
 			# get_active_material resolves overrides; surface_get_material alone
@@ -186,6 +197,10 @@ func _paint(car: Car) -> void:
 					painted += 1
 				MAT_CHASSIS:
 					mi.set_surface_override_material(s, _chassis_material(base))
+				MAT_RIM:
+					mi.set_surface_override_material(s, _rim_material(base))
+				MAT_DISC, MAT_HUB:
+					mi.set_surface_override_material(s, _brake_material(base))
 	if painted == 0:
 		push_warning("car: no '%s' surface found; the car is unpainted" % MAT_PAINT)
 
@@ -231,6 +246,33 @@ func _chassis_material(base: BaseMaterial3D) -> StandardMaterial3D:
 	mat.clearcoat_enabled = true
 	mat.clearcoat = 0.3
 	mat.clearcoat_roughness = 0.12
+	return mat
+
+
+## The OEM wheel with its albedo map back on it.
+##
+## Without the map the rim was one flat light metal at roughness 0.23, which
+## under a lit stadium is a mirror: it took the sky's colour, filled the gaps
+## between the spokes with a bright dish and lost the wheel's shape entirely.
+## The map is mostly black with light spokes, which is what gives the real
+## Octane its dark-between-the-spokes read. Roughness comes up with it — these
+## are cast wheels, not chrome.
+func _rim_material(base: BaseMaterial3D) -> StandardMaterial3D:
+	var mat := base.duplicate() as StandardMaterial3D
+	mat.albedo_texture = RIM_ALBEDO
+	mat.albedo_color = Color(1.0, 1.0, 1.0)
+	mat.metallic = 0.62
+	mat.roughness = 0.36
+	return mat
+
+
+## Brake disc and hub collar, darkened. Both ship near half grey at roughness
+## 0.2, and they sit directly behind the spokes — mirror-bright, they read as a
+## solid disc and undo the gaps the rim map has just opened up.
+func _brake_material(base: BaseMaterial3D) -> StandardMaterial3D:
+	var mat := base.duplicate() as StandardMaterial3D
+	mat.albedo_color = base.albedo_color * 0.34
+	mat.roughness = 0.45
 	return mat
 
 
