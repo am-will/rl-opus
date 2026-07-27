@@ -79,6 +79,19 @@ var landed_hard := 0.0
 var just_jumped := false
 var just_flipped := false
 
+## Visual steering lock, in radians. Purely cosmetic — the physics steers by
+## curvature, not by a wheel angle.
+const STEER_LOCK := 0.52
+## Where the wheel centre sits with the suspension at rest, in car-local space.
+const WHEEL_REST_LOCAL_Y := 0.02 - (Feel.WHEEL_REST_LEN - Feel.WHEEL_RADIUS)
+
+var _wheel_pivots: Array[Node3D] = [null, null, null, null]
+var _wheel_rest: Array[Vector3] = [
+	Vector3.ZERO, Vector3.ZERO, Vector3.ZERO, Vector3.ZERO
+]
+var _steer_visual := 0.0
+var fx: CarFx = null
+
 var _space: PhysicsDirectSpaceState3D = null
 var _ray := PhysicsRayQueryParameters3D.new()
 ## Diagonal of the inverse inertia tensor in the body frame. Godot computes the
@@ -148,7 +161,20 @@ func _ready() -> void:
 			"compression": 0.0,
 			"spin": 0.0,
 		})
+	_build_wheel_pivots()
+
+	fx = CarFx.new()
+	fx.name = "Fx"
+	add_child(fx)
+	fx.setup(self)
+
 	sync()
+
+
+## Visual-only, once per rendered frame. Nothing here touches physics state.
+func _process(dt: float) -> void:
+	_steer_visual = lerpf(_steer_visual, input.steer, clampf(dt * 14.0, 0.0, 1.0))
+	_update_wheels()
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +255,66 @@ func _fit_model() -> void:
 
 func _tire(model: Node3D, corner: String) -> Node3D:
 	return model.find_child("*%s_Tire*" % corner, true, false) as Node3D
+
+
+## Gather each corner's six meshes (tyre, rim, axle, disc, caliper, hub) under a
+## pivot at the axle centre, so suspension travel, steering and wheel spin cost
+## one transform each instead of twenty-four.
+##
+## The pivots hang off the CAR, not off the model, so their transforms are in
+## the same space the suspension reports travel in and the spin axis is just
+## local X. Reparenting preserves each mesh's world transform, which bakes the
+## model's scale into the child and keeps the pivot itself unscaled.
+func _build_wheel_pivots() -> void:
+	var model := get_node_or_null("Model") as Node3D
+	if model == null:
+		return
+	# Feel.WHEEL_OFFSETS is front-left, front-right, rear-left, rear-right in
+	# the sense that local +X is the driver's LEFT (forward is local +Z).
+	var corners := ["Front_Left", "Front_Right", "Rear_Left", "Rear_Right"]
+	for i in 4:
+		var tire := _tire(model, corners[i])
+		if tire == null:
+			push_warning("car: %s tyre not found; wheels will not animate" % corners[i])
+			return
+		var centre := to_local(tire.global_position)
+		# Match the corner to the suspension slot by sign rather than by name, so
+		# a mirrored export still drives the right wheel.
+		var slot := (0 if centre.z > 0.0 else 2) + (0 if centre.x > 0.0 else 1)
+
+		var pivot := Node3D.new()
+		pivot.name = "Wheel_%s" % corners[i]
+		add_child(pivot)
+		pivot.position = centre
+		_wheel_rest[slot] = centre
+		_wheel_pivots[slot] = pivot
+
+		var group := tire.get_parent()
+		for n in group.get_children():
+			if not (n is Node3D):
+				continue
+			if not String(n.name).contains(corners[i]):
+				continue
+			var t := (n as Node3D).global_transform
+			group.remove_child(n)
+			pivot.add_child(n)
+			(n as Node3D).global_transform = t
+
+
+## Suspension travel, steering lock and wheel spin. Visual only.
+func _update_wheels() -> void:
+	for i in 4:
+		var pivot: Node3D = _wheel_pivots[i]
+		if pivot == null:
+			continue
+		var travel: float = float(wheels[i]["local_y"]) - WHEEL_REST_LOCAL_Y
+		var b := Basis()
+		if i < 2:  # front axle steers
+			b = Basis(Vector3(0, 1, 0), -_steer_visual * STEER_LOCK)
+		# Rolling forward puts the top of the wheel forward, which is a negative
+		# rotation about local +X.
+		b = b * Basis(Vector3(1, 0, 0), -float(wheels[i]["spin"]))
+		pivot.transform = Transform3D(b, _wheel_rest[i] + Vector3(0.0, travel, 0.0))
 
 
 # ---------------------------------------------------------------------------

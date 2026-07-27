@@ -2,180 +2,202 @@ class_name HUD
 extends CanvasLayer
 ## Match HUD. Built in code so there is no .tscn to keep in sync.
 ##
-## Layout follows the TS build's: score and clock top-centre, boost dial and
-## speed bottom-right, phase text dead centre, controls bottom-left.
+## Everything is placed by `_place`: pick an anchor point, give a size, get a
+## rect centred on that anchor. Setting anchor presets alone leaves Labels at
+## zero width, which is what put the score in the top-left corner.
 
-const BLUE := Color(0.2, 0.667, 1.0)
-const ORANGE := Color(1.0, 0.541, 0.2)
+const BLUE := Color(0.20, 0.667, 1.0)
+const ORANGE := Color(1.0, 0.541, 0.20)
+const DIM := Color(1, 1, 1, 0.55)
 const ARC_SWEEP := deg_to_rad(290.0)
+const DIAL := 132.0
 
-var _score_label: Label
-var _clock_label: Label
-var _centre_label: Label
-var _sub_label: Label
-var _toast_label: Label
-var _speed_label: Label
-var _boost_label: Label
-var _boost_dial: Control
+var _root: Control
+var _score_blue: Label
+var _score_orange: Label
+var _clock: Label
+var _centre: Label
+var _sub: Label
+var _toast: Label
+var _speed: Label
+var _boost_num: Label
+var _dial: Control
 var _controls: Label
+var _flash_rect: ColorRect
+var _score_plate: ColorRect
 
 var _boost := 0.0
 var _boost_infinite := false
 var _toast_timer := 0.0
 var _flash := 0.0
 var _flash_colour := Color.WHITE
-var _flash_rect: ColorRect
 
 
 func _ready() -> void:
 	layer = 10
-	var root := Control.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(root)
+	_root = Control.new()
+	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_root)
 
 	_flash_rect = ColorRect.new()
 	_flash_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flash_rect.color = Color(1, 1, 1, 0)
-	root.add_child(_flash_rect)
+	_root.add_child(_flash_rect)
 
-	_score_label = _mk_label(root, 44, Control.PRESET_CENTER_TOP)
-	_score_label.position = Vector2(0, 18)
-	_score_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	# --- scoreboard: [blue] clock [orange], centred at the top ---------------
+	_score_plate = ColorRect.new()
+	_score_plate.color = Color(0.03, 0.04, 0.07, 0.55)
+	_score_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_score_plate)
+	_place(_score_plate, Vector2(0.5, 0.0), Vector2(0, 14), Vector2(330, 78))
 
-	_clock_label = _mk_label(root, 26, Control.PRESET_CENTER_TOP)
-	_clock_label.position = Vector2(0, 74)
-	_clock_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_score_blue = _label(44)
+	_score_blue.add_theme_color_override("font_color", BLUE)
+	_place(_score_blue, Vector2(0.5, 0.0), Vector2(-108, 18), Vector2(120, 52))
 
-	_centre_label = _mk_label(root, 86, Control.PRESET_CENTER)
-	_centre_label.position = Vector2(0, -60)
-	_centre_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_score_orange = _label(44)
+	_score_orange.add_theme_color_override("font_color", ORANGE)
+	_place(_score_orange, Vector2(0.5, 0.0), Vector2(108, 18), Vector2(120, 52))
 
-	_sub_label = _mk_label(root, 28, Control.PRESET_CENTER)
-	_sub_label.position = Vector2(0, 30)
-	_sub_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_clock = _label(30)
+	_place(_clock, Vector2(0.5, 0.0), Vector2(0, 24), Vector2(180, 40))
 
-	_toast_label = _mk_label(root, 30, Control.PRESET_CENTER)
-	_toast_label.position = Vector2(0, 130)
-	_toast_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	# --- centre overlay ------------------------------------------------------
+	_centre = _label(88)
+	_place(_centre, Vector2(0.5, 0.42), Vector2(0, 0), Vector2(900, 110))
+	_sub = _label(30)
+	_place(_sub, Vector2(0.5, 0.42), Vector2(0, 84), Vector2(900, 44))
+	_toast = _label(28)
+	_place(_toast, Vector2(0.5, 0.62), Vector2(0, 0), Vector2(700, 40))
 
-	_boost_dial = Control.new()
-	_boost_dial.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
-	_boost_dial.position = Vector2(-130, -130)
-	_boost_dial.custom_minimum_size = Vector2(140, 140)
-	_boost_dial.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_boost_dial.draw.connect(_draw_dial)
-	root.add_child(_boost_dial)
+	# --- boost dial, bottom right -------------------------------------------
+	_dial = Control.new()
+	_dial.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_dial)
+	_place(_dial, Vector2(1.0, 1.0), Vector2(-DIAL * 0.5 - 40, -DIAL * 0.5 - 56),
+		Vector2(DIAL, DIAL))
+	_dial.draw.connect(_draw_dial)
 
-	_boost_label = _mk_label(root, 34, Control.PRESET_BOTTOM_RIGHT)
-	_boost_label.position = Vector2(-142, -84)
-	_boost_label.size = Vector2(84, 40)
-	_boost_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_boost_num = _label(38)
+	_place(_boost_num, Vector2(1.0, 1.0), Vector2(-DIAL * 0.5 - 40, -DIAL * 0.5 - 56),
+		Vector2(DIAL, 48))
 
-	_speed_label = _mk_label(root, 22, Control.PRESET_BOTTOM_RIGHT)
-	_speed_label.position = Vector2(-190, -22)
-	_speed_label.size = Vector2(180, 28)
-	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_speed_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_speed = _label(22)
+	_place(_speed, Vector2(1.0, 1.0), Vector2(-110, -34), Vector2(200, 30))
 
-	_controls = _mk_label(root, 15, Control.PRESET_BOTTOM_LEFT)
-	_controls.position = Vector2(18, -132)
-	_controls.size = Vector2(420, 120)
+	# --- controls, bottom left ----------------------------------------------
+	_controls = _label(15)
 	_controls.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	_controls.modulate = Color(1, 1, 1, 0.55)
-	_controls.text = "W/S drive   A/D steer   Space jump (x2 = flip)\n" \
-		+ "Shift boost   Ctrl powerslide / air roll   Q/E air roll\n" \
-		+ "C ball cam   R reset car   T restart   B infinite boost\n" \
-		+ "H hide this   F1 free camera   Esc quit"
+	_controls.modulate = DIM
+	_place(_controls, Vector2(0.0, 1.0), Vector2(232, -70), Vector2(440, 110))
+	_controls.text = "W/S drive    A/D steer    Space jump (twice = flip)\n" \
+		+ "Shift boost    Ctrl powerslide / air roll    Q/E air roll\n" \
+		+ "C ball cam    R reset car    T restart    B infinite boost\n" \
+		+ "H hide this    F1 free camera    Esc quit"
 
 
-func _mk_label(parent: Control, size: int, preset: int) -> Label:
+## Anchor point + offset from it + size -> a rect centred on the anchor.
+func _place(c: Control, anchor: Vector2, offset: Vector2, size: Vector2) -> void:
+	c.anchor_left = anchor.x
+	c.anchor_right = anchor.x
+	c.anchor_top = anchor.y
+	c.anchor_bottom = anchor.y
+	c.offset_left = offset.x - size.x * 0.5
+	c.offset_right = offset.x + size.x * 0.5
+	c.offset_top = offset.y - size.y * 0.5
+	c.offset_bottom = offset.y + size.y * 0.5
+
+
+func _label(size: int) -> Label:
 	var l := Label.new()
-	parent.add_child(l)
-	l.set_anchors_preset(preset)
+	_root.add_child(l)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.add_theme_font_size_override("font_size", size)
-	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.75))
-	l.add_theme_constant_override("shadow_offset_x", 2)
-	l.add_theme_constant_override("shadow_offset_y", 2)
-	l.add_theme_constant_override("outline_size", 6)
-	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	l.add_theme_constant_override("outline_size", maxi(4, size / 6))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	return l
 
 
 func _draw_dial() -> void:
-	var c := Vector2(70, 70)
-	var r := 55.0
+	var c := Vector2(DIAL, DIAL) * 0.5
+	var r := DIAL * 0.42
+	# Sweep is centred on straight-down and opens upward, like RL's.
 	var start := PI * 0.5 + (TAU - ARC_SWEEP) * 0.5
-	var pts := 48
+	var pts := 56
 	var bg := PackedVector2Array()
 	for i in pts + 1:
 		bg.append(c + Vector2.RIGHT.rotated(start + ARC_SWEEP * i / float(pts)) * r)
-	_boost_dial.draw_polyline(bg, Color(1, 1, 1, 0.16), 9.0, true)
+	_dial.draw_polyline(bg, Color(1, 1, 1, 0.14), 10.0, true)
 
 	var frac := 1.0 if _boost_infinite else clampf(_boost / Feel.BOOST_MAX, 0.0, 1.0)
-	if frac <= 0.001:
+	if frac <= 0.005:
 		return
 	var fg := PackedVector2Array()
 	var n := maxi(2, int(pts * frac))
 	for i in n + 1:
 		fg.append(c + Vector2.RIGHT.rotated(start + ARC_SWEEP * frac * i / float(n)) * r)
-	var col := Color(1.0, 0.78, 0.25) if frac > 0.01 else Color(1, 0.3, 0.3)
-	_boost_dial.draw_polyline(fg, col, 9.0, true)
+	var col := Color(1.0, 0.72, 0.22) if frac > 0.18 else Color(1.0, 0.36, 0.26)
+	_dial.draw_polyline(fg, col, 10.0, true)
 
 
 func update_from(game: Game) -> void:
 	var car := game.player_car
 	_boost = car.boost
 	_boost_infinite = car.infinite_boost
-	_boost_dial.queue_redraw()
-	_boost_label.text = "∞" if car.infinite_boost else str(int(round(car.boost)))
-	_speed_label.text = "%d km/h" % int(round(car.speed * 3.6))
-	_speed_label.modulate = Color(1.0, 0.85, 0.4) if car.supersonic else Color.WHITE
+	_dial.queue_redraw()
+	_boost_num.text = "∞" if car.infinite_boost else str(int(round(car.boost)))
+	_speed.text = "%d km/h" % int(round(car.speed * 3.6))
+	_speed.modulate = Color(1.0, 0.85, 0.4) if car.supersonic else Color.WHITE
 
-	_score_label.text = "%d   —   %d" % [game.score[0], game.score[1]]
+	_score_blue.text = str(game.score[0])
+	_score_orange.text = str(game.score[1])
 	if game.practice:
-		_clock_label.text = "FREE PLAY"
+		_clock.text = "FREE PLAY"
 	elif game.overtime:
-		_clock_label.text = "+%d:%02d" % [int(game.clock) / 60, int(game.clock) % 60]
+		_clock.text = "+%d:%02d" % [int(game.clock) / 60, int(game.clock) % 60]
 	else:
 		var t := int(ceil(game.clock))
-		_clock_label.text = "%d:%02d" % [t / 60, t % 60]
+		_clock.text = "%d:%02d" % [t / 60, t % 60]
 
 	match game.phase:
 		Game.Phase.COUNTDOWN:
 			var n := int(ceil(game.countdown))
-			_centre_label.text = str(n) if n > 0 else "GO!"
-			_sub_label.text = ""
+			_centre.text = str(n) if n > 0 else "GO!"
+			_sub.text = ""
 		Game.Phase.GOAL:
-			_centre_label.text = "GOAL!"
-			_sub_label.text = "%s scores" % ("BLUE" if game.last_scorer == 0 else "ORANGE")
+			_centre.text = "GOAL!"
+			_centre.modulate = BLUE if game.last_scorer == 0 else ORANGE
+			_sub.text = "%s scores" % ("BLUE" if game.last_scorer == 0 else "ORANGE")
 		Game.Phase.ENDED:
-			_centre_label.text = "%s WINS" % ("BLUE" if game.score[0] > game.score[1] else "ORANGE")
-			_sub_label.text = "Press T for a rematch"
+			_centre.modulate = Color.WHITE
+			_centre.text = "%s WINS" % ("BLUE" if game.score[0] > game.score[1] else "ORANGE")
+			_sub.text = "Press T for a rematch"
 		_:
-			_centre_label.text = ""
-			_sub_label.text = ""
+			_centre.text = ""
+			_sub.text = ""
 
 
 func _process(dt: float) -> void:
 	if _toast_timer > 0.0:
 		_toast_timer -= dt
-		_toast_label.modulate.a = clampf(_toast_timer / 0.4, 0.0, 1.0)
+		_toast.modulate.a = clampf(_toast_timer / 0.4, 0.0, 1.0)
 		if _toast_timer <= 0.0:
-			_toast_label.text = ""
+			_toast.text = ""
 	if _flash > 0.0:
 		_flash = maxf(0.0, _flash - dt * 2.2)
-		_flash_rect.color = Color(_flash_colour.r, _flash_colour.g, _flash_colour.b, _flash * 0.5)
+		_flash_rect.color = Color(
+			_flash_colour.r, _flash_colour.g, _flash_colour.b, _flash * 0.45
+		)
 
 
 func toast(msg: String) -> void:
-	_toast_label.text = msg
+	_toast.text = msg
 	_toast_timer = 1.3
-	_toast_label.modulate.a = 1.0
+	_toast.modulate.a = 1.0
 
 
 func flash_goal(scorer: int) -> void:
