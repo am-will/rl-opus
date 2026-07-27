@@ -7,3 +7,6 @@ dist/
 
 server/node_modules/
 server/.wrangler/
+
+__pycache__/
+*.pyc
