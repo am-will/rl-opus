@@ -10,6 +10,7 @@ goal posts the goal mouths fall on real edges instead of a boolean seam.
 All normals point *into* the play space -- this is a room, seen from inside.
 """
 
+import bisect
 import math
 
 from . import const as C
@@ -102,6 +103,57 @@ def ring(inset):
             inside = lo < t < hi and abs(t - lo) > 1e-9 and abs(t - hi) > 1e-9
             mouth.append(sign if inside else 0)
     return pts, mouth
+
+
+def arc_lengths(pts):
+    """Cumulative arc length at each vertex of a closed ring, and the total.
+
+    Returns len(pts)+1 values, the last being the perimeter -- the same shape
+    `_ring_u` works in, unnormalised.
+    """
+    run = [0.0]
+    n = len(pts)
+    for k in range(n):
+        a, b = pts[k], pts[(k + 1) % n]
+        run.append(run[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+    return run, run[-1]
+
+
+def ring_span(pts, s0, s1):
+    """The stretch of a ring between two arc positions, as [(x, y, s)].
+
+    `s` is measured from s0, so a caller can use it directly as a U coordinate.
+    Both ends are interpolated, so the span is exactly the length asked for, and
+    every ring vertex inside it is kept, so the strip still follows the corner
+    fillets rather than cutting the chord. Positions wrap round the seam.
+
+    This exists because `ring` samples anything but evenly -- 14 steps per
+    corner fillet against 11 along a whole straight run -- so spanning a fixed
+    *number of samples* gives a strip whose world width per sample varies by 6x.
+    Anything with a graphic on it has to be spanned by arc length instead.
+    """
+    run, total = arc_lengths(pts)
+    n = len(pts)
+    # Two laps, so a span crossing the seam still reads as monotonic.
+    lap = run[:-1] + [v + total for v in run]
+
+    def at(s):
+        i = min(bisect.bisect_right(lap, s) - 1, 2 * n - 1)
+        span = lap[i + 1] - lap[i] or 1.0
+        t = (s - lap[i]) / span
+        a, b = pts[i % n], pts[(i + 1) % n]
+        return (U.lerp(a[0], b[0], t), U.lerp(a[1], b[1], t))
+
+    width = s1 - s0
+    s0 %= total
+    s1 = s0 + width
+    out = [(*at(s0), 0.0)]
+    i = bisect.bisect_right(lap, s0)
+    while i < len(lap) and lap[i] < s1:
+        out.append((pts[i % n][0], pts[i % n][1], lap[i] - s0))
+        i += 1
+    out.append((*at(s1), s1 - s0))
+    return out
 
 
 def inset_field(X, Y):

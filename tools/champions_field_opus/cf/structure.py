@@ -93,24 +93,41 @@ def _bunting(coll, seed=11):
     return {"bunting": ob}
 
 
+BOARD_DZ = (-340.0, 460.0)       # board extent about the tier's front height
+
+
 def _hero_boards(coll, board_tex, count=6):
-    """Large branded panels facing the pitch off the lower-tier fascia."""
+    """Large branded panels facing the pitch off the lower-tier fascia.
+
+    Each board is a fixed *arc length* of the bowl, sized off the texture's own
+    aspect ratio, rather than a fixed number of ring samples. `arena.ring`
+    samples the corner fillets six times more densely than the straights, so
+    spreading U evenly over samples squeezed the wordmark to half width round a
+    corner and stretched it to 1.6x along the straight next to it -- a visible
+    kink mid-word -- and left neighbouring boards carrying the same 4:1 artwork
+    at anything from 4.9:1 to 12.8:1.
+    """
     col_img, emit_img = board_tex
+    tex_w, tex_h = col_img.size
+    dz0, dz1 = BOARD_DZ
+    width = (dz1 - dz0) * (tex_w / tex_h)      # square pixels on the board
+
     verts, faces, uvs = [], [], []
     d0, z0 = stands.TIERS[1][0], stands.TIERS[1][1]
     pts = arena.ring(-(d0 - 200.0))[0]
-    n = len(pts)
-    half = 12                                  # ring samples spanned per board
+    _run, perim = arena.arc_lengths(pts)
     for k in range(count):
-        c = int(n * (k + 0.5) / count)
-        seg = [pts[(c + t) % n] for t in range(-half, half + 1)]
+        centre = perim * (k + 0.5) / count
+        seg = arena.ring_span(pts, centre - width / 2, centre + width / 2)
         for t in range(len(seg) - 1):
             a, b = seg[t], seg[t + 1]
-            u0 = 1.0 - t / (len(seg) - 1)
-            u1 = 1.0 - (t + 1) / (len(seg) - 1)
+            # U runs against the ring's winding: the board is read from the
+            # pitch side, and mapping it with the winding mirrors the wordmark.
+            u0 = 1.0 - a[2] / width
+            u1 = 1.0 - b[2] / width
             j = len(verts)
-            verts.extend([(a[0], a[1], z0 - 340), (b[0], b[1], z0 - 340),
-                          (b[0], b[1], z0 + 460), (a[0], a[1], z0 + 460)])
+            verts.extend([(a[0], a[1], z0 + dz0), (b[0], b[1], z0 + dz0),
+                          (b[0], b[1], z0 + dz1), (a[0], a[1], z0 + dz1)])
             faces.append((j, j + 3, j + 2, j + 1))
             uvs.extend([(u0, 0.0), (u0, 1.0), (u1, 1.0), (u1, 0.0)])
 
