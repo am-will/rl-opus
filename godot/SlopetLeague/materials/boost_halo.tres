@@ -1,0 +1,14 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+; Assigned to CF_BoostGlow by import/arena_post_import.gd.
+
+[ext_resource type="Shader" path="res://shaders/boost_halo.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/colour = Color(1, 0.42, 0.07, 1)
+shader_parameter/strength = 1.15
+shader_parameter/falloff = 2.8
+shader_parameter/core = 0.06
+shader_parameter/breathe_rate = 1.7
+shader_parameter/breathe_depth = 0.06

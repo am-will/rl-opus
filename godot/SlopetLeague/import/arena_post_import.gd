@@ -99,6 +99,21 @@ const BACK_Y := 5120.0
 # Alpha-blended in Blender, alpha-to-coverage here -- see _to_alpha_coverage.
 const CUTOUT_MATERIALS := ["CF_Wall", "CF_Ceiling", "CF_GoalNet"]
 
+# The three parts of a boost pad that are light rather than matter. Every one
+# of them is alpha driven by a node graph in `cf/props.py` -- a ramp up the
+# curtain's V, a radial falloff on the bloom quad, a facing term on the orb --
+# and glTF carries none of it: they all arrive with ALPHA = 1, which is how a
+# wisp of fire became a solid cone and a ball of light became a ping-pong ball.
+#
+# These point at resources on disk rather than materials built here, because
+# editing this script costs a full reimport of a 41 MB arena and editing a
+# `.tres` the `.scn` merely references costs nothing.
+const BOOST_MATERIALS := {
+	"CF_BoostBeam": "res://materials/boost_curtain.tres",
+	"CF_BoostGlow": "res://materials/boost_halo.tres",
+	"CF_BoostOrb": "res://materials/boost_orb.tres",
+}
+
 const BLUE_HOT := Color(0.35, 0.72, 1.00)
 const ORANGE_HOT := Color(1.00, 0.66, 0.24)
 const BLUE := Color(0.043, 0.353, 1.000)      # cf/const.py
@@ -176,6 +191,13 @@ func _fix_materials(mi: MeshInstance3D) -> void:
 			continue
 		if m.resource_name == "CF_Turf":
 			mi.set_surface_override_material(i, _turf_material(m))
+			continue
+		if m.resource_name in BOOST_MATERIALS:
+			mi.set_surface_override_material(
+				i, load(BOOST_MATERIALS[m.resource_name]))
+			# `visible_shadow = False` in Blender has no glTF equivalent, and a
+			# plume that casts a shadow puts a dark column on the pitch.
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			continue
 		if m.resource_name in TEAM_RAMPS:
 			mi.set_surface_override_material(

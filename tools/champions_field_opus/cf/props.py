@@ -225,38 +225,35 @@ def boost_materials(tex=None):
     # Only the 100s carry one. Alpha follows how squarely the surface faces the
     # camera, so it is dense through the middle and gone at the silhouette --
     # a ball of light rather than a lit ball.
-    orb = U.principled("CF_BoostOrb", base=(0.0, 0.0, 0.0), roughness=1.0,
-                       emission=(1.0, 0.55, 0.14), emission_strength=7.5)
+    orb = U.principled("CF_BoostOrb", base=(0.20, 0.07, 0.02), roughness=0.14,
+                       metallic=0.45, emission=(1.0, 0.55, 0.14),
+                       emission_strength=2.6)
     nt = orb.node_tree
     facing = nt.nodes.new("ShaderNodeLayerWeight")
     facing.location = (-900, -300)
     facing.inputs["Blend"].default_value = 0.5
     # `Facing` is 0 head-on and 1 at the silhouette, i.e. the inverse of what a
-    # ball of light wants -- dense through the middle, gone at the edge.
+    # ball of light wants -- hot through the middle, sodium orange at the edge.
     head_on = nt.nodes.new("ShaderNodeMath")
     head_on.operation = "SUBTRACT"
     head_on.location = (-720, -300)
     head_on.inputs[0].default_value = 1.0
     nt.links.new(facing.outputs["Facing"], head_on.inputs[1])
 
-    # Colour across the disc rather than one flat cream: the middle is the hot
-    # part of a filament and the edge is the sodium orange everything else on
-    # the pad runs at. Without this the orb reads as a ping-pong ball.
+    # Opaque and polished rather than a ball of alpha, because the reference
+    # orb is a *thing with a light in it*: it takes a hard specular off the
+    # floodlights and picks up the arena around it. A transparent emissive
+    # sphere can do neither -- it has no surface to reflect with, so however
+    # bright it is made it stays a flat disc of colour.
     tint = nt.nodes.new("ShaderNodeValToRGB")
     tint.location = (-540, -80)
     tint.color_ramp.interpolation = "EASE"
     tint.color_ramp.elements[0].position = 0.02
-    tint.color_ramp.elements[0].color = (1.00, 0.20, 0.02, 1.0)
+    tint.color_ramp.elements[0].color = (1.00, 0.24, 0.03, 1.0)
     tint.color_ramp.elements[1].position = 0.82
-    tint.color_ramp.elements[1].color = (1.00, 0.90, 0.66, 1.0)
+    tint.color_ramp.elements[1].color = (1.00, 0.86, 0.55, 1.0)
     nt.links.new(head_on.outputs[0], tint.inputs["Fac"])
     nt.links.new(tint.outputs["Color"], U.bsdf_of(orb).inputs["Emission Color"])
-
-    shape = nt.nodes.new("ShaderNodeMath")
-    shape.operation = "POWER"
-    shape.location = (-540, -300)
-    shape.inputs[1].default_value = 1.5
-    nt.links.new(head_on.outputs[0], shape.inputs[0])
 
     # Convection mottling, in object space so it does not swim with the camera.
     coord = nt.nodes.new("ShaderNodeTexCoord")
@@ -268,14 +265,11 @@ def boost_materials(tex=None):
     nt.links.new(coord.outputs["Object"], mottle.inputs["Vector"])
     mrange = nt.nodes.new("ShaderNodeMapRange")
     mrange.location = (-540, -560)
-    mrange.inputs["To Min"].default_value = 0.70
-    mrange.inputs["To Max"].default_value = 1.20
+    mrange.inputs["To Min"].default_value = 2.2
+    mrange.inputs["To Max"].default_value = 3.0
     nt.links.new(mottle.outputs["Fac"], mrange.inputs["Value"])
-
-    a = _mul(nt, shape.outputs[0], mrange.outputs["Result"], (-340, -380))
-    nt.links.new(a, U.bsdf_of(orb).inputs["Alpha"])
-    orb.surface_render_method = "BLENDED"
-    orb.use_transparent_shadow = False
+    nt.links.new(mrange.outputs["Result"],
+                 U.bsdf_of(orb).inputs["Emission Strength"])
 
     return {"decal": decal, "beam": beam, "glow": glow, "orb": orb}
 

@@ -1,0 +1,24 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+; Assigned to CF_BoostBeam by import/arena_post_import.gd. Kept as a resource
+; on disk rather than built in that script so the look can be tuned without a
+; reimport of the 41 MB arena -- the .scn only stores a path to this file.
+
+[ext_resource type="Shader" path="res://shaders/boost_glow.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" path="res://materials/boost_noise.tres" id="2_noise"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/hot = Color(1, 0.78, 0.4, 1)
+shader_parameter/cool = Color(1, 0.22, 0.02, 1)
+shader_parameter/strength = 2.0
+shader_parameter/noise_tex = ExtResource("2_noise")
+shader_parameter/noise_scale = Vector2(7, 1.6)
+shader_parameter/scroll = 0.55
+shader_parameter/rise = 0.70
+shader_parameter/base_alpha = 0.44
+shader_parameter/end_taper = 0.16
+shader_parameter/erode_lo = 0.34
+shader_parameter/erode_hi = 0.78
+shader_parameter/heat_span = 0.55
+shader_parameter/edge_soft = 0.38
