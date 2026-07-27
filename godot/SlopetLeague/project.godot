@@ -27,5 +27,15 @@ window/size/viewport_height=900
 [rendering]
 
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+lights_and_shadows/positional_shadow/atlas_size=8192
 anti_aliasing/quality/msaa_3d=2
+anti_aliasing/quality/use_taa=true
 environment/defaults/default_clear_color=Color(0.02, 0.03, 0.06, 1)
+environment/ssao/quality=3
+environment/ssil/quality=3
+environment/screen_space_reflection/roughness_quality=2
+; The floodlight beams are the whole point of the volumetrics here, and the
+; default 64^3 froxel grid smears them into soup at stadium scale.
+environment/volumetric_fog/volume_size=160
+environment/volumetric_fog/volume_depth=160
