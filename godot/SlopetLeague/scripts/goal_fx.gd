@@ -112,13 +112,14 @@ func _blast(at: Vector3, cars: Array, rng: RandomNumberGenerator) -> void:
 		if d > BLAST_RADIUS:
 			continue
 		var falloff := pow(1.0 - d / BLAST_RADIUS, 1.5)
-		var dir := car.pos - at
-		# Bias upward so cars are thrown clear rather than skidded along the
-		# deck, then renormalise.
-		dir.y = maxf(dir.y, 0.45)
-		if dir.length_squared() < 1e-6:
-			dir = Vector3(0, 1, 0)
-		dir = dir.normalized()
+		# Normalise FIRST, then lift, then renormalise — raising y on the raw
+		# displacement instead would make the lift negligible at range: 24
+		# degrees at 20 m becomes 1.3. Game.ts:873-875.
+		var dir := Vector3(0, 1, 0)
+		if d >= 0.4:
+			dir = (car.pos - at) / d
+			dir.y = maxf(dir.y, 0.45)  # never a pure sideways shove
+			dir = dir.normalized()
 		car.linear_velocity += dir * (BLAST_BASE + BLAST_PEAK * falloff)
 		car.angular_velocity += Vector3(
 			rng.randf_range(-1.0, 1.0),

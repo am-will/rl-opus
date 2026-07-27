@@ -87,6 +87,19 @@ func _run() -> bool:
 			_check_true("a goal in overtime ends the match",
 				_game.phase == Game.Phase.ENDED)
 		5:
+			# Godot scales the dt handed to _process, so the celebration timer
+			# ticks at a fifth speed too: without the ramp, 3.2 s of celebration
+			# takes 14.5 real seconds at 1.8 ms physics steps.
+			Engine.time_scale = Feel.MATCH_SLOWMO_SCALE
+			var real := 0.0
+			var frames := 0
+			while Engine.time_scale < 1.0 and frames < 600:
+				# What _process would be handed at 60 fps real.
+				_game._recover_time_scale((1.0 / 60.0) * Engine.time_scale)
+				real += 1.0 / 60.0
+				frames += 1
+			_check("slow motion ramps back over about a second", real, 1.04, 0.1)
+			_check_true("...and reaches full speed", Engine.time_scale >= 1.0)
 			_game.restart_match()
 			_check("restart clears the score", float(_game.score[0] + _game.score[1]), 0.0)
 			_check_true("...and resets the clock",

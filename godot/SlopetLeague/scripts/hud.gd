@@ -169,6 +169,7 @@ func update_from(game: Game) -> void:
 
 	match game.phase:
 		Game.Phase.COUNTDOWN:
+			_centre.modulate = Color.WHITE
 			var n := int(ceil(game.countdown))
 			_centre.text = str(n) if n > 0 else "GO!"
 			_sub.text = ""

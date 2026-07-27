@@ -269,8 +269,8 @@ func _build_wheel_pivots() -> void:
 	var model := get_node_or_null("Model") as Node3D
 	if model == null:
 		return
-	# Feel.WHEEL_OFFSETS is front-left, front-right, rear-left, rear-right in
-	# the sense that local +X is the driver's LEFT (forward is local +Z).
+	# Local +X is the driver's LEFT (forward is local +Z), so Feel.WHEEL_OFFSETS
+	# reads front-left, front-right, rear-left, rear-right.
 	var corners := ["Front_Left", "Front_Right", "Rear_Left", "Rear_Right"]
 	for i in 4:
 		var tire := _tire(model, corners[i])
@@ -311,9 +311,10 @@ func _update_wheels() -> void:
 		var b := Basis()
 		if i < 2:  # front axle steers
 			b = Basis(Vector3(0, 1, 0), -_steer_visual * STEER_LOCK)
-		# Rolling forward puts the top of the wheel forward, which is a negative
-		# rotation about local +X.
-		b = b * Basis(Vector3(1, 0, 0), -float(wheels[i]["spin"]))
+		# Rolling forward puts the top of the wheel forward. Solving
+		# v_cm + w x r_contact = 0 for forward = +Z gives w = +X * (v/R), and
+		# Basis(+X, t) sends (0, r, 0) to (0, r cos t, r sin t) — so POSITIVE.
+		b = b * Basis(Vector3(1, 0, 0), float(wheels[i]["spin"]))
 		pivot.transform = Transform3D(b, _wheel_rest[i] + Vector3(0.0, travel, 0.0))
 
 

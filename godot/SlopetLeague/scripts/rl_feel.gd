@@ -153,8 +153,8 @@ const CAR_DRIFT_DRAG := 1.6
 # Suspension ----------------------------------------------------------------
 
 ## Mount points in car-local space, relative to the hitbox centre.
-## Order: front-right, front-left, rear-right, rear-left (local +X is the
-## driver's LEFT — see Car.sync, forward is local +Z).
+## Local +X is the driver's LEFT (see Car.sync — forward is local +Z), so this
+## reads front-left, front-right, rear-left, rear-right.
 const WHEEL_OFFSETS: Array[Vector3] = [
 	Vector3(0.4, 0.02, 0.42 * BODY_STRETCH),
 	Vector3(-0.4, 0.02, 0.42 * BODY_STRETCH),
@@ -367,14 +367,28 @@ const TEAM_ORANGE := 1
 #   ball  vs floor  friction min(0.475, 0.6)   = 0.475  (TS avg = 0.475)
 #   ball  vs wall   friction min(0.475, 0.375) = 0.375  (TS avg = 0.375)
 #
-# The car's own shell stays slippery on purpose — tyre forces are simulated by
-# hand, so the box must slide along walls instead of catching on them.
+# The car's friction cannot be made to match all three of its pairs at once,
+# because min() cannot rise above the smaller number. config.ts gives the shell
+# 0.18 and Rapier averages it up: 0.39 on the floor, 0.29 on walls, 0.32 in the
+# goals. Transcribing 0.18 literally would give 0.18 everywhere — half the
+# intended grip on the two surfaces where a scraping shell is actually felt.
+# 0.30 is the value closest to all four pairs at once:
+#
+#   car  vs floor  min(0.30, 0.6)   = 0.30   (TS 0.39)
+#   car  vs wall   min(0.30, 0.375) = 0.30   (TS 0.29)
+#   car  vs goal   min(0.30, 0.40)  = 0.30   (TS 0.32)
+#   ball vs car    min(0.475, 0.30) = 0.30   (TS 0.265)
+#
+# Measured rather than argued: mean car-position error against the oracle over
+# the six contact-heavy scenarios falls from 2.41 m to 1.29 m, and wall_ride —
+# the most contact-dependent of them — from 2.01 m to 0.82 m. The one scenario
+# it costs is ball_hit_offset, by 0.2 m.
 
 const SURF_BOUNCE := 0.1
 const BALL_BOUNCE_GODOT := 0.5
 const BALL_FRICTION_GODOT := 0.475
 const CAR_BOUNCE_GODOT := 0.1
-const CAR_FRICTION_GODOT := 0.18
+const CAR_FRICTION_GODOT := 0.30
 ## surface name -> friction, chosen so min() with the ball's lands on the
 ## average Rapier would have produced.
 const SURF_FRICTION := {

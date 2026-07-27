@@ -62,7 +62,8 @@ var last_scorer := -1
 ## `wrecked` is only true for a 120-tick window and is easy to sample past.
 var demolition_count := 0
 var goal_fx: GoalFx
-var _rng := RandomNumberGenerator.new()
+## Public so a harness can make a run reproducible; see tests/soak.gd.
+var rng := RandomNumberGenerator.new()
 
 var _input := PlayerInput.new()
 var _player_intent := CarInput.new()
@@ -73,6 +74,9 @@ var _arena: Node3D
 var _fly_cam: Camera3D
 var _free_cam := false
 var _prev_ball_vel := Vector3.ZERO
+## Reused every tick; the roster filter used to build a lambda and an Array at
+## 120 Hz for a list that changes about twice a match.
+var _active_cars: Array[Car] = []
 
 
 func _ready() -> void:
@@ -191,8 +195,11 @@ func _physics_process(dt: float) -> void:
 
 	var live := phase == Phase.PLAYING
 	if enable_pads:
-		var active_cars: Array = cars.filter(func(c: Car) -> bool: return c.active)
-		pads.update(dt, active_cars)
+		_active_cars.clear()
+		for c in cars:
+			if c.active:
+				_active_cars.append(c)
+		pads.update(dt, _active_cars)
 	_update_demolitions()
 	if live and enable_goals:
 		_check_goal()
@@ -328,7 +335,7 @@ func _on_goal(scorer: int) -> void:
 			ball.pos,
 			HUD.BLUE if scorer == Feel.TEAM_BLUE else HUD.ORANGE,
 			cars,
-			_rng
+			rng
 		)
 	phase = Phase.GOAL
 	if practice:
@@ -338,6 +345,19 @@ func _on_goal(scorer: int) -> void:
 		return
 	goal_timer = Feel.MATCH_GOAL_CELEBRATION
 	Engine.time_scale = Feel.MATCH_SLOWMO_SCALE
+
+
+## Ramp out of the goal replay. Godot scales the dt handed to _process, so the
+## celebration timer ticks at a fifth speed too — left alone, 3.2 s of it takes
+## 14.5 real seconds. Game.ts:398 ramps timeScale back over about a second of
+## REAL time and lets the timer run out normally after that.
+func _recover_time_scale(dt: float) -> void:
+	if Engine.time_scale >= 1.0:
+		return
+	var real_dt := dt / maxf(Engine.time_scale, 0.01)
+	Engine.time_scale = minf(
+		1.0, Engine.time_scale + real_dt * Feel.MATCH_SLOWMO_RECOVER
+	)
 
 
 ## Clock and phase timers. Runs once per RENDERED frame on the scaled dt, the
@@ -423,6 +443,7 @@ func restart_match() -> void:
 
 func _process(dt: float) -> void:
 	_handle_one_shots()
+	_recover_time_scale(dt)
 	_advance_clock(dt)
 	if audio:
 		# Phases are passed in rather than read back out, so game_audio.gd never

@@ -31,7 +31,12 @@ const Y_MAX := 24.0
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	_max_ticks = int(_arg(args, "--ticks", "60000"))
-	_rng.seed = int(_arg(args, "--seed", "20260727"))
+	var sd := int(_arg(args, "--seed", "20260727"))
+	_rng.seed = sd
+	# The game has randomness of its own — kickoff spot choice, the bot's aim
+	# jitter, the goal blast — and Godot randomises the global seed at startup.
+	# Without pinning both, a green soak is one sample of an unknown population.
+	seed(sd)
 	var ps := load("res://scenes/game.tscn") as PackedScene
 	_game = ps.instantiate() as Game
 	_game.external_input = true
@@ -43,6 +48,7 @@ func _physics_process(_dt: float) -> bool:
 		if _game == null or _game.player_car == null:
 			return false
 		current_scene = _game
+		_game.rng.seed = _rng.seed
 		# The bot car is benched while external_input is set (that is what keeps
 		# the trace harness to one car); a soak wants both of them moving.
 		for c in _game.cars:
