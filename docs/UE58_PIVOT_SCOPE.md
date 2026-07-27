@@ -1,8 +1,8 @@
 # Unreal Engine 5.8 — pivot scope
 
-> **Status: proposed, not started.** This is the parallel track to
-> `GODOT_FIDELITY_SCOPE_V2.md`. The two are meant to be run side by side and
-> judged against the same ground truth (§B5).
+> **Status: proposed, not started.** Target platform for look-dev and rendering
+> is **Linux + Vulkan on an RTX-class GPU**. See §B0 for why that choice
+> resolves the feature question, and what still needs confirming.
 
 ---
 
@@ -21,83 +21,91 @@ three that took the longest to build:
    scenarios × 900 ticks at 120 Hz and diffs them per channel with documented,
    justified tolerances. A UE port is measured by the same harness on day one.
 
-What does *not* carry over is the Godot scene, the GDScript, and
-`arena_post_import.gd` — and the last of those is the point: 446 lines of it
-exist purely to undo what glTF loses. §B1 is about not writing it twice.
+What does *not* carry over is the current runtime scene, its scripts, and
+`godot/SlopetLeague/import/arena_post_import.gd` — and the last of those is the
+point. It is 446 lines that exist purely to undo what glTF loses on the way out
+of Blender. §B1 is about not writing it a second time.
 
 ---
 
-## B0. The hardware fork — decide this before anything else
+## B0. Platform — Linux + Vulkan
 
-This is the one finding that changes the shape of the whole track, and it is
-not obvious from the release notes.
+**This is settled and it is good news.** The constraint worth knowing about is
+Apple Silicon, not Linux: on macOS/Metal, Epic lists Lumen and Path Tracer
+hardware ray tracing — and therefore MegaLights — as still in progress. On Linux
+the picture is different.
 
-**Verified state of UE on macOS / Apple Silicon (this machine is an M4):**
+**Verified:** ray tracing on the Vulkan RHI has **feature parity with DirectX 12
+and Shader Model 6**, including Hit Lighting mode with Lumen and the path
+tracer. Lumen's own hardware requirements list *"Windows 10 with DirectX 12, or
+**Linux with Vulkan**"*, requiring **NVIDIA RTX-2000 series or higher, or AMD
+RX-6000 series or higher**.
 
-| feature | Metal / Apple Silicon status |
+So on a Linux box with a suitable card, the full 5.8 feature set is available:
+
+| feature | Linux / Vulkan |
 |---|---|
-| Nanite | ✅ works — M2+, SM6, macOS 15+ |
-| Virtual Shadow Maps | ✅ works |
-| Substrate | ✅ production-ready on Metal since 5.7, default for new projects |
-| Lumen — **software** ray tracing | ✅ works |
-| TSR / MetalFX upscaling | ✅ works |
-| Lumen — **hardware** ray tracing | ⚠️ **M3+, "in progress — not quite there yet"** |
-| **MegaLights** | ⚠️ **same gate — needs HWRT** |
-| **Path Tracer** | ⚠️ **same gate** |
+| Nanite | ✅ |
+| Virtual Shadow Maps | ✅ |
+| Substrate | ✅ production-ready, default for new projects since 5.7 |
+| Lumen — software tracing | ✅ |
+| Lumen — **hardware** tracing | ✅ RTX-2000+ / RX-6000+ |
+| **MegaLights** | ✅ production-ready on desktop in 5.8 |
+| **Path Tracer** | ✅ |
+| TSR | ✅ |
 
-The two features gated behind hardware RT are precisely the two that matter most
-for *this* scene:
+### Why MegaLights is the feature that matters here
 
-- **MegaLights** went production-ready in 5.8 and is built for exactly this
-  problem — hundreds of dynamic, shadow-casting **area** lights with low noise,
-  at 60 fps on console. This arena has 18 floodlights + 21 area lights + 34
-  emissive boost pads. In Godot all 21 area lights ship with
-  `shadow_enabled = false` because there is no budget for them. MegaLights is
-  the feature that deletes that compromise.
-- **Path Tracer** is what replaces the EEVEE still as ground truth (§B4). Its
-  absence does not block the port, but it caps how well the result can be
-  judged.
+It went production-ready in 5.8 and it is built for exactly this problem —
+orders of magnitude more dynamic, shadow-casting **area** lights, with the noise
+reduced enough to target 60 fps on PS5-class hardware. 5.8 also added
+transmission (subsurface), Froxel-based translucency, and IES support for
+volumetrics.
 
-There is also a second-order risk: Lumen propagates emissive materials, but
-**small, bright emissives are its known weak case** — they produce noise, and
-Epic's own docs say this is harder to solve than placed lights. The 34 boost
-pads are small bright emissives. The mitigation is to make them real area
-lights, which is the MegaLights path again.
+This arena has **18 floodlights + 21 area lights + 34 emissive boost pads**. In
+the current build all 21 area lights carry `shadow_enabled = false` because
+there is no budget for them, and the 18 floodlights share a single 8192 shadow
+atlas. MegaLights deletes that entire compromise rather than tuning it.
 
-### The two branches
+It also covers the one Lumen weakness that bites this scene specifically: Lumen
+propagates emissive materials, but **small, bright emissives are its known bad
+case** — they produce noise, and Epic's docs state this is harder to solve than
+placed lights. The 34 boost pads are small bright emissives. With MegaLights
+they become real area lights instead.
 
-**B0-mac — stay on the M4.**
-You get Nanite, VSM, Substrate and Lumen SWRT. That is still a large win over
-Godot (see §B3 — VSM alone deletes the biggest Godot problem). You do not get
-MegaLights, hardware-traced reflections, or a path-traced reference.
+### To confirm before B1 starts
 
-**B0-win — add a Windows/NVIDIA machine or a cloud GPU instance.**
-Mac stays the dev box; the RT machine is for look-dev, MegaLights, and rendering
-the path-traced ground truth. Full 5.8 feature set.
+- **Which GPU is in the Linux box.** RTX-2000+ or RX-6000+ is the floor. On AMD,
+  also check the Mesa version — RADV ray-tracing improvements for UE5 landed in
+  Mesa 26.0, and older RADV was a known weak spot.
+- **`r.Lumen.HardwareRayTracing` and `r.MegaLights.Enabled` actually take** on
+  that machine, in a scratch project, with a box and a light. One hour of work
+  that de-risks the whole track.
 
-**Recommendation: B0-win.** The stated goal is "the best looking version." The
-features that get you there need hardware RT, and on Apple Silicon Epic lists
-them as in progress. Everything else in this document is branch-agnostic — the
-asset pipeline, the physics port and the harness are identical either way — so
-this decision can be made now and does not block starting.
+Note that the local dev machine is an M4 Mac. That is fine for editing, C++ and
+the physics work; treat the Linux box as the look-dev and render machine. Plan
+for the project to open on both, and do not let Mac-only Metal limitations get
+tuned around as if they were engine limitations.
 
 ---
 
 ## B1. Asset path — regenerate, do not convert
 
 **Do not export the 41 MB glTF into UE and re-fix it there.** That reproduces
-`arena_post_import.gd`: photometric light intensities arriving 5.7 million times
-too large, eight cameras hijacking the viewport, `COLOR_0` ignored, node-graph
-materials collapsed to flat white, alpha driven by graphs arriving as `ALPHA=1`.
-Every one of those is a glTF limitation, not a Godot one, and UE will hit them
+`arena_post_import.gd` in a new language: photometric light intensities arriving
+5.7 million times too large, eight cameras hijacking the viewport, `COLOR_0`
+ignored so crowd and bunting arrive white, node-graph materials collapsed to
+flat white, alpha driven by graphs arriving as `ALPHA = 1` so a wisp of fire
+becomes a solid cone. Every one of those is a glTF limitation. UE will hit them
 all.
 
 ### B1.1 Geometry — USD
 
 Blender has a native USD exporter and UE 5.x has strong USD import. USD carries
-materials (UsdPreviewSurface), instancing, and — importantly — `PointInstancer`.
+materials (UsdPreviewSurface), instancing, and `PointInstancer`.
 
-**Verified caveat:** USD does not carry Blender spot lights. Do not fight this.
+**Verified caveat:** USD does not carry Blender spot lights. Do not fight it —
+see B1.2.
 
 ### B1.2 Lighting — a JSON manifest, built natively
 
@@ -105,43 +113,48 @@ materials (UsdPreviewSurface), instancing, and — importantly — `PointInstanc
 wattage, shape and size. Emit that as a **JSON manifest** alongside the USD and
 construct the lights natively in UE from a Python import step.
 
-This is the same pattern `arena_post_import.gd` uses, and it is the right one —
-it survived contact with reality once already. The watt→energy derivation is
-different (UE uses real photometric units, so this actually gets *simpler*:
-Blender watts map to UE lumens/candela far more directly than to Godot's
-`light_energy`).
+This is the pattern the current build already uses, and it survived contact with
+reality once. The watt→energy conversion should get *simpler*, not harder: UE
+uses real photometric units, so Blender wattages map far more directly than they
+did to Godot's `light_energy` (which needed a measured `1/(π² · 0.9572)`
+derivation and a note explaining that attenuation is a decay exponent on raw
+metres rather than the curve it resembles).
 
-### B1.3 The crowd — this is where Nanite pays for itself
+### B1.3 The crowd — where Nanite pays for itself
 
-The crowd is **733k loose boxes** baked into a single mesh. In Godot it is lit
+The crowd is **733k loose boxes** baked into a single mesh. It is currently lit
 by ten strip lights with a hand-tuned `BOWL_CORRECTION = 0.525` that the source
-comments describe openly as "a stand-in for missing occlusion, not a claim about
-the light."
+comments describe openly as *"a stand-in for missing occlusion, not a claim
+about the light."*
 
-In UE: emit the seat transforms from the generator as an instance table, render
-as ISM/HISM with Nanite. Nanite has its own culling and LOD and handles orders
-of magnitude more instances than traditional geometry. Real per-seat geometry,
-real occlusion, no correction factor.
+In UE: emit the seat transforms from the generator as an instance table and
+render as ISM/HISM with Nanite, which brings its own culling and LOD and handles
+orders of magnitude more instances than traditional geometry. Real per-seat
+geometry, real occlusion, no correction factor.
 
-This is a strict upgrade and it removes a documented fudge.
+Strict upgrade, and it removes a documented fudge.
 
 ### B1.4 Materials — Substrate
 
-Substrate is production-ready on Metal and default for new projects since 5.7.
+Substrate is production-ready and default for new projects since 5.7.
 
-- **Car:** Epic ships a free **280-material automotive Substrate pack** on Fab
-  with single/dual/triple-coat car paints, glints, thin-film, anisotropy. This
-  is the car-paint problem solved off the shelf. *(Coordinate with the in-flight
-  car work — that is Godot-side; this is the UE equivalent.)*
+- **Car:** Epic ships a free **280-material automotive Substrate pack** on Fab —
+  single/dual/triple-coat car paints, glints, thin-film interference,
+  anisotropy, controlled imperfections. The car-paint problem is solved off the
+  shelf.
 - **Boards, goal frame, ball:** layered clearcoat over the existing albedo.
-- **Turf:** the same detail-density problem as `GODOT_FIDELITY_SCOPE_V2.md` §A2,
-  solved the same way — a tiling detail layer — but with Substrate's layering
-  and UE's virtual texturing behind it.
+- **Turf:** needs a tiling detail layer regardless of engine. The baked turf
+  albedo is 3072 × 4500 over an 81.92 × 102.4 m pitch — **~2.5 cm per texel** —
+  and the chase camera sits about 3 m off the deck. Add detail albedo + normal
+  at ~2 mm/texel, distance-faded, with virtual texturing behind it.
+- **Pitch lines:** currently drawn as pixels into that same albedo
+  (`cf/textures.py:101-122`). At 2.5 cm/texel a 26 uu line is ~10 texels and
+  reads as mush. Re-emit as decals or as a separate high-density mask.
 
-### B1.5 What to port, in order
+### B1.5 Order
 
-1. Static shell (floor, walls, ceiling, goal pockets) + collision — this is the
-   playable volume and the physics port (§B2) needs it first.
+1. Static shell (floor, walls, ceiling, goal pockets) + collision — the physics
+   port needs the playable volume first.
 2. Lighting manifest.
 3. Crowd instancing.
 4. Props, boost pads, dressing.
@@ -149,172 +162,171 @@ Substrate is production-ready on Metal and default for new projects since 5.7.
 
 ---
 
-## B2. Physics — bounded, and already testable
+## B2. Physics — bounded, and testable from day one
 
-`PHYSICS_PARITY_HANDOFF.md` establishes the finding that makes this tractable:
-**the car is not using any engine's vehicle model.** It is a plain rigid box
-with four suspension raycasts and velocities driven by hand. The engine surface
-is five operations.
+`docs/PHYSICS_PARITY_HANDOFF.md` establishes the finding that makes this
+tractable: **the car does not use any engine's vehicle model.** It is a plain
+rigid box with four suspension raycasts and velocities driven by hand. The
+engine surface is five operations.
 
-| TypeScript (Rapier) | Godot (Jolt) | UE 5.8 (Chaos) |
-|---|---|---|
-| `castArenaRay` | `intersect_ray()` | `UWorld::LineTraceSingleByChannel` |
-| `applyImpulseAtPoint` | `apply_impulse` | `AddImpulseAtLocation` |
-| `linvel()` / `setLinvel()` | `linear_velocity` | `Get/SetPhysicsLinearVelocity` |
-| `angvel()` / `setAngVel()` | `angular_velocity` | `Get/SetPhysicsAngularVelocityInRadians` |
-| cuboid + static colliders | `BoxShape3D` + arena bodies | `UBoxComponent` + arena collision |
+| TypeScript (Rapier) | UE 5.8 (Chaos) |
+|---|---|
+| `castArenaRay(o, d, len)` | `UWorld::LineTraceSingleByChannel` |
+| `applyImpulseAtPoint(imp, pt, true)` | `AddImpulseAtLocation` |
+| `linvel()` / `setLinvel()` | `Get/SetPhysicsLinearVelocity` |
+| `angvel()` / `setAngVel()` | `Get/SetPhysicsAngularVelocityInRadians` |
+| cuboid collider + fixed arena colliders | `UBoxComponent` + arena collision |
 
 Everything else is vector and quaternion maths.
 
 ### B2.1 Approach
 
-Port `src/physics/Car.ts` and `Ball.ts` to **C++**, not Blueprint — the tick is
-120 Hz fixed and determinism matters for `docs/MULTIPLAYER.md`.
+Port `src/physics/Car.ts` and `src/physics/Ball.ts` to **C++**, not Blueprint —
+the tick is 120 Hz fixed and determinism matters for `docs/MULTIPLAYER.md`.
 
-### B2.2 Expect the same class of divergence, in the same places
+### B2.2 Expect divergence, and know where
 
-The Rapier→Jolt port needed tolerance widening in exactly the contact-dominated
-scenarios, and `tools/trace/verify.py` documents each one with its cause:
+The earlier Rapier→Jolt port needed tolerance widening in exactly the
+contact-dominated scenarios, and `tools/trace/verify.py` documents each with its
+cause. Chaos will land differently again, in the same places:
 
 - `ball_drop` / `ball_wall` — resting and bounce heights carry a constant offset
-  from how each engine handles penetration; the rebound *speed* matched to 0.3%.
+  from how each engine handles penetration. Rebound *speed* matched to 0.3%.
 - `front_flip` / `side_flip` — the chassis scrapes the deck as the nose comes
-  round and the engines disagree how much goes into spin vs forward speed.
-- `wall_ride` — 500+ ticks of continuous contact; the wall apex agreed to 1.3%.
+  round; engines disagree how much goes into spin versus forward speed.
+- `wall_ride` — 500+ ticks of continuous contact up the fillet, across the
+  ceiling and down. The wall apex agreed to 1.3%, which is the number that
+  decides whether ceiling play works.
 
-Chaos will land differently again. The harness will say exactly where, on which
-channel, and by how much. **Budget the tuning; do not budget rediscovery.**
+**Budget the tuning; do not budget rediscovery.** The harness will say which
+channel, which tick, and by how much.
 
-### B2.3 The fallback worth costing up front
+### B2.3 The fallback, costed up front
 
 If the traces will not close against Chaos, **bypass Chaos for the car**:
-hand-integrate against a custom BVH built from the same arena collision. Since
-the car already drives its own velocities, the solver is only providing
-integration and contact resolution — both of which are portable.
+hand-integrate against a custom BVH built from the same arena collision. The car
+already drives its own velocities, so the solver is only supplying integration
+and contact resolution — both portable.
 
-This guarantees bit-exact parity across all three builds and gives full
-determinism for rollback netcode. It is more work up front and zero risk after.
+That guarantees identical behaviour across builds and gives full determinism for
+rollback netcode. More work up front, zero solver risk after.
 
 **Recommendation:** try Chaos first, measured by the harness. Fall back if the
-contact scenarios will not close within a tolerance you can write a justification
-for. The existing `TOLERANCE` table sets the standard: *"a big number here is not
-a lowered bar, it is a claim."*
+contact scenarios will not close within a tolerance you can write a
+justification for. The existing `TOLERANCE` table sets the standard — *"a big
+number here is not a lowered bar, it is a claim."*
 
 ---
 
 ## B3. Rendering setup
 
-- **Virtual Shadow Maps.** 16k × 16k virtual resolution. Epic's own docs state
-  that with VSM the screen-space Contact Shadow feature is *no longer necessary*
-  for sharp contact shadows. **This deletes the single biggest problem in the
-  Godot build by default**, with no blob-shadow fake and no bias sweep.
-- **Nanite** on the crowd and the stadium shell (§B1.3).
-- **Lumen.** Raise `Lumen Scene View Distance` — SWRT defaults to 200 m and the
-  arena volume is ~250 m across; it supports up to 800 m.
-- **MegaLights** (B0-win branch) for the full 39-light rig plus the boost pads
-  as real area lights, with the transmission, Froxel translucency and IES
-  volumetric support added in 5.8.
+- **Virtual Shadow Maps.** 16k × 16k virtual resolution. Epic's docs state that
+  with VSM the screen-space Contact Shadow feature is *no longer necessary* for
+  sharp contact shadows. Grounding — car and ball actually attached to the pitch
+  — comes for free rather than being faked.
+- **MegaLights** for the full 39-light rig plus the boost pads as real area
+  lights (§B0).
+- **Nanite** on the crowd and the stadium shell.
+- **Lumen** with hardware tracing and Hit Lighting for reflections. Raise
+  `Lumen Scene View Distance`: software tracing defaults to 200 m and the arena
+  volume is ~250 m across; it supports up to 800 m.
 - **Substrate** materials throughout (§B1.4).
-- **Motion blur.** UE has real per-object motion blur. Godot has none, verified.
-  At supersonic speed this is a genuine differentiator.
-- **TSR** (or MetalFX on the Mac branch) instead of fighting TAA's detail loss.
-- **Lumen Lite** is new in 5.8 — roughly twice as fast as Lumen high quality,
-  targeting 60 fps on PS5. Worth measuring as the shipping default even if
-  look-dev runs on full Lumen.
+- **Per-object motion blur.** Available and worth using at supersonic speed.
+- **TSR** rather than fighting a temporal AA that eats surface detail.
+- **Lumen Lite**, new in 5.8 — roughly twice as fast as Lumen high quality,
+  targeting 60 fps on PS5, now the default on current-gen handhelds. Worth
+  measuring as the shipping preset even if look-dev runs full Lumen.
 
 ---
 
-## B4. Harness and ground truth — reuse, do not rebuild
+## B4. Harness and ground truth
 
-The measurement tooling is engine-agnostic and should be kept.
+The measurement tooling in this repo is engine-agnostic and should be kept.
 
 - **B4.1** Port `cf/shots.py`'s 15 camera definitions to a UE Level Sequence.
-  They are already location + look-at + focal length in the same units, and they
-  are already ported to Godot once (`scripts/shot_cameras.gd`), so the
-  conversion is known.
+  They are location + look-at + focal length in known units and have been ported
+  once already, so the conversion is understood — including the detail that
+  Blender's `sensor_fit = AUTO` makes `lens` a *horizontal* FOV on a 16:9 frame.
 - **B4.2** Drive captures through **Movie Render Graph**. Verified: MRG is
   scriptable via the Python Editor Script Plugin and supports command-line
-  rendering. Known wart — several reports of `-ExecutePythonScript` starting a
-  render then exiting early. **Budget a day for the harness**; do not assume it
-  is a one-liner.
-- **B4.3** Keep `compare_shots.py` and `tone_compare.py` unchanged. They take
-  two PNGs.
-- **B4.4** **New ground truth: UE Path Tracer** renders of the same 15 shots
-  (B0-win branch). The real-time build then chases a path-traced target instead
-  of an EEVEE one. This is the single largest quality-ceiling change available
-  in either scope — and it is the same idea as
-  `GODOT_FIDELITY_SCOPE_V2.md` §A8, which proposes Cycles for the same reason.
-  **Whichever branch happens first, both tracks should chase it.**
+  rendering. Known wart — multiple reports of `-ExecutePythonScript` beginning a
+  render and then exiting immediately. **Budget a day for the harness**; it is
+  not a one-liner.
+- **B4.3** Keep `tools/champions_field_opus/compare_shots.py` and
+  `tone_compare.py` unchanged. They take two PNGs and report per-region
+  luminance and saturation across five bands.
+- **B4.4** **Ground truth is the Path Tracer.** Render the 15 shots path-traced
+  and make the real-time build chase those, not a rasterised still. This is the
+  single largest change to the quality ceiling available in this scope, and it
+  is only possible because §B0 landed on a platform with hardware RT.
+
+  Note that five framings — `goal`, `corner`, `top`, `ceiling` and `aerial` —
+  have no current reference of any kind
+  (`renders/champions_field_opus/REFERENCES.md`). Generate all 15 rather than
+  inheriting that gap.
 
 ### B4.5 Automation spine
 
 `UnrealMCPHost/` already exists in this repo with the official
 `ModelContextProtocol` plugin and `AllToolsets` enabled, plus
-`tools/unreal_mcp_stdio_proxy.py` and a verifier. That is the UE equivalent of
-the `--capture` harness and it is already stood up.
+`tools/unreal_mcp_stdio_proxy.py` and `tools/verify_unreal_mcp_proxy.py`. That
+is already stood up and is the equivalent of the existing `--capture` harness.
 
 ---
 
-## B5. The bake-off — define it before either track finishes
+## B5. How this track is judged
 
-Since both tracks are being run to compare, fix the terms now so the comparison
-is not decided by whichever screenshot happens to look nicer.
+Fix the terms before the work finishes, so the result is not decided by
+whichever screenshot happens to look nicest.
 
-- **Same 15 framings**, from the same `cf/shots.py` numbers, at the same output
-  resolution.
-- **Same ground truth** — path-traced (§B4.4), whichever engine produces it.
+- **Same 15 framings** from `cf/shots.py`, same output resolution.
+- **Against path-traced ground truth** (§B4.4).
 - **Three scores:**
-  1. `compare_shots.py` per-region luminance and saturation error vs ground truth
-     (roof, crowd, boards, far pitch, near pitch).
-  2. Frame time at 1440p on the same machine, at playable settings.
-  3. A blind visual pick on a chase-camera frame at speed — because that is the
-     view the game is actually played from, and none of the 15 shots is it.
-- **Decision gate at the end of asset-pass + lighting-pass in each track**, not
-  at the end of everything. If UE is decisively ahead by then it will not close;
-  if it is not ahead by then, the Godot track is the cheaper finish.
+  1. `compare_shots.py` per-region luminance and saturation error — roof, crowd,
+     boards, far pitch, near pitch.
+  2. Frame time at 1440p at playable settings, on the Linux box.
+  3. A blind look at a chase-camera frame at speed — because that is the view
+     the game is played from, and none of the 15 shots is it.
+- **Checkpoint after the asset pass and the lighting pass**, not at the end. Two
+  places to stop early if the result is not tracking.
 
 ---
 
-## Sizing, honestly
+## Sizing
 
 | phase | relative size | notes |
 |---|---|---|
-| B0 decision | hours | but blocks the ceiling, not the start |
-| B1 asset pipeline | **largest single item** | USD exporter + light manifest + crowd instancing; the generator does the heavy lifting |
-| B2 physics | medium, well-defined | 5 operations, 14 traces, documented failure modes |
-| B3 rendering setup | small | mostly configuration; this is what UE gives you for free |
-| B4 harness | small | tooling is reusable; budget a day for MRG's wart |
-| B5 bake-off | small | but must be defined early |
+| B0 confirmation | ~1 hour | GPU check + feature smoke test; do it first |
+| B1 asset pipeline | **largest single item** | USD export + light manifest + crowd instancing |
+| B2 physics | medium, well-defined | 5 operations, 14 traces, known failure modes |
+| B3 rendering setup | small | mostly configuration — this is what the engine gives you |
+| B4 harness | small | tooling is reusable; one day for MRG's wart |
+| B5 evaluation | small | but define it early |
 
-The Godot scope is on the order of a couple of weeks for most of its gain. This
-one is meaningfully larger and front-loaded on B1 and B2 — but neither is
-research, both are known work, and the acceptance tests for both already exist.
+Front-loaded on B1 and B2. Neither is research; both have acceptance tests that
+already exist.
 
 ---
 
 ## Risks
 
-1. **Hardware RT on Apple Silicon (B0).** Highest-impact unknown. Mitigated by
-   branching to a Windows/cloud GPU box. Do not discover this in week three.
-2. **Lumen and small bright emissives.** 34 boost pads plus wall strips,
-   chevrons and 18 floodlight lenses. Mitigation is MegaLights, which is gated
-   on risk 1. On the Mac branch, plan to convert the pads to placed area lights
-   by hand.
-3. **Chaos contact divergence (B2.2).** Real, bounded, measurable. Fallback in
-   B2.3 removes it entirely at a cost.
-4. **USD round-trip losses.** Known: no spot lights. Assume more will surface;
-   the JSON-manifest pattern in B1.2 is the general answer — anything USD drops,
+1. **GPU class in the Linux box.** RTX-2000+ / RX-6000+ is the floor for Lumen
+   HWRT. On AMD, Mesa 26.0+ for the RADV ray-tracing work. Confirm before B1.
+2. **Chaos contact divergence (B2.2).** Real, bounded, measurable. B2.3 removes
+   it entirely at a cost.
+3. **USD round-trip losses.** Known: no spot lights. Assume more will surface.
+   The JSON-manifest pattern in B1.2 is the general answer — anything USD drops,
    emit as data and rebuild natively.
-5. **Two builds to maintain.** Real cost during the bake-off. B5's decision gate
-   is what limits how long it lasts.
+4. **Mac/Linux split.** The dev machine is an M4 where MegaLights and the Path
+   Tracer are not available. The failure mode is someone tuning around a Metal
+   limitation as if it were an engine limitation. Do look-dev on Linux only.
 
 ---
 
-## What this document assumes and does not test
+## What this document assumes and has not tested
 
-Everything about UE 5.8's feature set here is from Epic's documentation and
-release notes, not from a build in this repo. **Nothing in §B has been measured
-on this machine.** The first hour of this track should be: open
-`UnrealMCPHost`, enable Nanite/Lumen/VSM/Substrate, drop in a box and a light,
-and confirm the Metal feature table in §B0 against reality — before any of §B1
-is written.
+Everything about UE 5.8's feature set here comes from Epic's documentation and
+release notes. **Nothing in this scope has been run in this repo.** The first
+hour should be §B0's smoke test on the Linux box — confirm the GPU, confirm
+Lumen HWRT and MegaLights actually enable, confirm the Path Tracer renders —
+before a line of B1 is written.

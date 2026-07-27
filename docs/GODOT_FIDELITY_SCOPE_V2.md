@@ -285,4 +285,7 @@ The things it cannot fix, in Godot:
 - **VoxelGI is coarse and LightmapGI is static.** There is no dynamic GI path
   here that carries small bright emissives well.
 
-Those four are exactly the list that `UE58_PIVOT_SCOPE.md` opens on.
+None of those four blocks the work below them. They are written down so that
+when the build is done and something still reads as short of a reference
+frame, the remaining distance has a name and nobody spends a week re-tuning
+the grade looking for it.
