@@ -62,6 +62,8 @@ var last_scorer := -1
 ## `wrecked` is only true for a 120-tick window and is easy to sample past.
 var demolition_count := 0
 var goal_fx: GoalFx
+## Lights the 34 pads out and back in as they are taken and respawn.
+var pad_fx: BoostPadFx
 ## Public so a harness can make a run reproducible; see tests/soak.gd.
 var rng := RandomNumberGenerator.new()
 
@@ -115,6 +117,11 @@ func _ready() -> void:
 	goal_fx = GoalFx.new()
 	goal_fx.name = "GoalFx"
 	add_child(goal_fx)
+
+	pad_fx = BoostPadFx.new()
+	pad_fx.name = "BoostPadFx"
+	add_child(pad_fx)
+	pad_fx.setup(_arena, pads.pads)
 
 	# A scripted run must sound like nothing at all, so the trace suite and the
 	# screenshot harness never see an audio node.
@@ -455,6 +462,8 @@ func _process(dt: float) -> void:
 	for c in cars:
 		c.sync()
 	ball.sync()
+	if pad_fx:
+		pad_fx.update(dt)
 
 	if cam and not _free_cam:
 		# The arena glTF ships eleven Camera3Ds and shot_cameras.gd adds more;
