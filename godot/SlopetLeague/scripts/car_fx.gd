@@ -37,9 +37,42 @@ const MAT_HUB := "Hub_Steel"
 ## on the way out and the rim came through as bare metal. The mesh kept its UVs,
 ## so putting the map back is all it takes.
 const RIM_ALBEDO := preload("res://assets/octane_rim_albedo.png")
-## Flame is RL's blue-white core rather than the team colour — it reads as heat.
-const FLAME_HOT := Color(0.75, 0.88, 1.0)
-const FLAME_COOL := Color(0.25, 0.55, 1.0)
+## The boost flame.
+##
+## Rocket League's stock Rocket Boost is FIRE: white-hot where it leaves the
+## nozzle, out through yellow and orange, into a dark red as it cools. This used
+## to draw a blue-white jet on the theory that blue reads as heat. It does on a
+## dark background — and this pitch is a floodlit green field, where blue is the
+## one hue the grass, the lights and the blue car already own between them, so a
+## hundred faint blue sprites overlapping additively landed on white and the
+## boost came out as a grey smudge. Orange is the only strong contrast on offer.
+const FLAME_CORE := Color(1.0, 0.96, 0.84)   # at the nozzle
+const FLAME_MID := Color(1.0, 0.50, 0.06)    # the body of the flame
+const FLAME_TAIL := Color(0.38, 0.06, 0.01)  # cooling, at the end of the rope
+
+## How long a scrap of flame lives once it is out of the nozzle, and the whole
+## trick of the effect. `local_coords` is false, so nothing here is carried
+## along by the car: half a second of life at 21 m/s leaves an eleven-metre rope
+## of fire lying in the world along the exact line that was driven. A flame
+## welded to the bumper is indistinguishable from this one in a straight line,
+## and looks like a torch taped to a car the moment you turn.
+const TRAIL_LIFE := 0.55
+
+## The exhaust, in this node's local space. This node is parked at the back of
+## the car at axle height, because the tyre smoke and the contact shadow are
+## measured from there; the flame wants to be a little above it. An Octane's
+## boost comes out between the rear wings, not from under the boot.
+const NOZZLE := Vector3(0.0, 0.06, 0.0)
+
+## Half-width of the nozzle itself, for the core and for the rope. `_smear`
+## never shrinks the emission box below these, so the effect still has a mouth
+## when the car is stationary.
+const CORE_SEED := 0.045
+const TRAIL_SEED := 0.06
+## Longest half-smear `_smear` will lay down. Two and a half metres covers a
+## supersonic car at nine frames a second; past that the frame is a teleport,
+## not a drive.
+const SMEAR_MAX_HALF := 2.5
 
 ## Rear axle contact patch, in this node's local space. This node is parked
 ## behind the car (see setup), so the tyres are FORWARD of it.
@@ -64,7 +97,7 @@ const SHADOW_FADE_HEIGHT := 7.0
 
 var _car: Car
 var _flame: GPUParticles3D
-var _plume: GPUParticles3D
+var _trail: GPUParticles3D
 var _embers: GPUParticles3D
 var _streaks: GPUParticles3D
 var _tyres: GPUParticles3D
@@ -72,23 +105,30 @@ var _shadow: GroundMark
 var _light: OmniLight3D
 var _light_energy := 0.0
 var _land_smoke := 0.0
+## Where this node was on the previous rendered frame; see _smear.
+var _moved_from := Vector3.ZERO
+var _moved_seen := false
 
 
 func setup(car: Car) -> void:
 	_car = car
 	position = Vector3(0.0, 0.02, -Feel.CAR_HALF.z * 0.92)
 	_build_flame()
-	_build_plume()
+	_build_trail()
 	_build_embers()
 	_build_streaks()
 	_build_tyres()
 	_build_shadow()
 
+	# Warm, and matched to the flame — a boosting car should throw its own light
+	# onto the deck it is crossing, and the colour of that light is the tell for
+	# what is making it.
 	_light = OmniLight3D.new()
-	_light.light_color = Color(0.6, 0.8, 1.0)
-	_light.omni_range = 4.5
+	_light.light_color = Color(1.0, 0.58, 0.22)
+	_light.omni_range = 6.0
 	_light.light_energy = 0.0
 	_light.shadow_enabled = false
+	_light.position = NOZZLE
 	add_child(_light)
 
 	_paint(car)
@@ -97,7 +137,7 @@ func setup(car: Car) -> void:
 ## One textured billboard. Every particle system here used to draw a bare
 ## QuadMesh, which has no alpha falloff of its own, so each puff was a literal
 ## square — worst on the ball's trail, but the boost was doing it too.
-func _sprite(size: float, tex: Texture2D, blend: int, alpha := 1.0) -> QuadMesh:
+func _sprite(size: float, tex: Texture2D, blend: int, alpha := 1.0, frames := 1) -> QuadMesh:
 	var quad := QuadMesh.new()
 	quad.size = Vector2(size, size)
 	var mat := StandardMaterial3D.new()
@@ -109,6 +149,13 @@ func _sprite(size: float, tex: Texture2D, blend: int, alpha := 1.0) -> QuadMesh:
 	mat.albedo_texture = tex
 	mat.albedo_color = Color(1, 1, 1, alpha)
 	mat.disable_receive_shadows = true
+	# `frames` cuts the texture into an n x n sheet. Which cell a particle draws
+	# is then its `anim_offset`, which the process material randomises per
+	# particle — see _build_trail.
+	if frames > 1:
+		mat.particles_anim_h_frames = frames
+		mat.particles_anim_v_frames = frames
+		mat.particles_anim_loop = false
 	# Softens the line where a puff intersects the deck, which is the other half
 	# of what read as blocks.
 	mat.proximity_fade_enabled = true
@@ -119,97 +166,171 @@ func _sprite(size: float, tex: Texture2D, blend: int, alpha := 1.0) -> QuadMesh:
 
 # ---------------------------------------------------------------------------
 
-## The hot core: a short, tight, very bright cone right at the exhausts. On its
-## own this is a bead of light, which is why it has a plume and embers over it.
+## The hot core: a short, tight, very bright bead right at the exhaust, where
+## the flame has not had time to cool or spread yet. This is the only layer that
+## still wants a smooth radial sprite — at the nozzle there IS no structure to
+## draw, it is one over-exposed spot, and the trail behind it does the shaping.
 func _build_flame() -> void:
 	_flame = GPUParticles3D.new()
-	_flame.amount = 44
-	_flame.lifetime = 0.17
+	_flame.amount = 40
+	_flame.lifetime = 0.13
 	_flame.explosiveness = 0.0
 	_flame.local_coords = false
 	_flame.emitting = false
+	_flame.position = NOZZLE
 	_flame.draw_order = GPUParticles3D.DRAW_ORDER_VIEW_DEPTH
 
 	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	pm.emission_sphere_radius = 0.05
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(CORE_SEED, CORE_SEED, CORE_SEED)
 	# Local -Z is behind the car (forward is +Z).
 	pm.direction = Vector3(0, 0, -1)
-	pm.spread = 7.0
-	pm.initial_velocity_min = 2.8
-	pm.initial_velocity_max = 4.8
+	pm.spread = 5.0
+	pm.initial_velocity_min = 3.0
+	pm.initial_velocity_max = 5.2
 	pm.gravity = Vector3.ZERO
-	pm.damping_min = 8.0
-	pm.damping_max = 12.0
-	pm.scale_min = 0.5
-	pm.scale_max = 1.0
+	pm.damping_min = 9.0
+	pm.damping_max = 14.0
+	pm.scale_min = 0.7
+	pm.scale_max = 1.15
 	var curve := Curve.new()
-	curve.add_point(Vector2(0.0, 0.45))
-	curve.add_point(Vector2(0.25, 1.0))
-	curve.add_point(Vector2(1.0, 0.0))
+	curve.add_point(Vector2(0.0, 0.55))
+	curve.add_point(Vector2(0.3, 1.0))
+	curve.add_point(Vector2(1.0, 0.35))
 	var ct := CurveTexture.new()
 	ct.curve = curve
 	pm.scale_curve = ct
+	# Gold, not white. This layer is additive over a lit pitch and AgX takes the
+	# hue out of anything it pushes toward the top of the curve, so starting at
+	# white lands on a colourless hotspot with an orange trail behind it, which
+	# reads as a headlight pointing the wrong way.
 	var grad := Gradient.new()
-	grad.set_color(0, Color(FLAME_HOT.r, FLAME_HOT.g, FLAME_HOT.b, 0.95))
-	grad.set_color(1, Color(FLAME_COOL.r, FLAME_COOL.g, FLAME_COOL.b, 0.0))
-	grad.add_point(0.35, Color(0.45, 0.72, 1.0, 0.7))
+	grad.set_color(0, Color(1.0, 0.92, 0.62, 0.9))
+	grad.set_color(1, Color(1.0, 0.38, 0.05, 0.0))
+	grad.add_point(0.45, Color(FLAME_CORE.r, FLAME_CORE.g, FLAME_CORE.b, 0.62))
 	var gt := GradientTexture1D.new()
 	gt.gradient = grad
 	pm.color_ramp = gt
 	_flame.process_material = pm
 
 	_flame.draw_pass_1 = _sprite(
-		0.34, FxSprites.glow(4.0), BaseMaterial3D.BLEND_MODE_ADD, 0.55
+		0.44, FxSprites.glow(3.4), BaseMaterial3D.BLEND_MODE_ADD, 0.48
 	)
+	_continuous(_flame)
 	add_child(_flame)
 
 
-## The soft blue wash the core sits inside. Wider, slower and much fainter, so
-## the flame has a body and an edge instead of being a point light with a tail.
-func _build_plume() -> void:
-	_plume = GPUParticles3D.new()
-	_plume.amount = 30
-	_plume.lifetime = 0.42
-	_plume.local_coords = false
-	_plume.emitting = false
-	_plume.draw_order = GPUParticles3D.DRAW_ORDER_VIEW_DEPTH
+## The rope of fire behind the car — the layer that actually reads as a boost.
+##
+## Two things make it one: the flame is left in the WORLD (see TRAIL_LIFE), and
+## it is heavily damped, so each scrap sprints half a metre out of the nozzle,
+## stops, and is then simply abandoned as the car drives away from it. The jet
+## at the exhaust and the rope down the pitch are the same particles at
+## different ages.
+##
+## The body is ALPHA BLENDED, not additive, and that is the whole reason it
+## holds a colour. This scene tonemaps with AgX, which desaturates hard as it
+## approaches white; additive fire over a floodlit green pitch starts at the
+## grass's own brightness and only ever climbs, so a dozen overlapping sprites
+## sum straight through orange into the part of the curve where AgX takes the
+## hue away and hands back cream. Alpha blending occludes instead of summing —
+## the rope is exactly the colour written here no matter how deep it stacks, and
+## it can go DARKER than the pitch at the tail, which is what lets the far end
+## cool into smoke instead of evaporating.
+##
+## The glow then comes back as a second draw pass: same particles, same colours,
+## an additive halo over the top. That is a wash around the fire rather than the
+## fire itself, so it can be bright enough to trip the bloom threshold without
+## touching the body's hue.
+func _build_trail() -> void:
+	_trail = GPUParticles3D.new()
+	_trail.amount = 200
+	_trail.lifetime = TRAIL_LIFE
+	_trail.local_coords = false
+	_trail.emitting = false
+	_trail.position = NOZZLE
+	_trail.draw_order = GPUParticles3D.DRAW_ORDER_VIEW_DEPTH
 
 	var pm := ParticleProcessMaterial.new()
-	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	pm.emission_sphere_radius = 0.07
+	# A box, not a sphere, because _smear stretches it down the car's axis every
+	# frame; see there for why.
+	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	pm.emission_box_extents = Vector3(TRAIL_SEED, TRAIL_SEED, TRAIL_SEED)
 	pm.direction = Vector3(0, 0, -1)
-	pm.spread = 15.0
-	pm.initial_velocity_min = 1.6
-	pm.initial_velocity_max = 3.2
-	pm.gravity = Vector3(0, 0.5, 0)
-	pm.damping_min = 4.0
-	pm.damping_max = 7.0
-	pm.scale_min = 0.55
-	pm.scale_max = 1.2
+	pm.spread = 11.0
+	pm.initial_velocity_min = 4.5
+	pm.initial_velocity_max = 8.0
+	# Fire rises, but barely: any more lift and the rope peels off the deck and
+	# hangs over the pitch like a banner instead of lying where it was laid.
+	pm.gravity = Vector3(0, 0.9, 0)
+	pm.damping_min = 11.0
+	pm.damping_max = 17.0
+	# A wide spread of sizes, because a rope of same-sized sprites reads as a
+	# rope of same-sized sprites however ragged each one is. Not wider than
+	# this, though: the small end of the range contributes nothing but gaps.
+	pm.scale_min = 0.52
+	pm.scale_max = 1.5
+	# Tumbling is most of the flicker: the sprite is ragged and off-centre, so a
+	# spinning one is a lick of flame moving, and a still one is a decal.
 	pm.angle_min = -180.0
 	pm.angle_max = 180.0
-	pm.angular_velocity_min = -70.0
-	pm.angular_velocity_max = 70.0
+	pm.angular_velocity_min = -140.0
+	pm.angular_velocity_max = 140.0
+	# Frame picker, not an animation: `anim_speed` stays 0 so a particle holds
+	# whichever of the four flame shapes it drew for its whole life.
+	pm.anim_offset_min = 0.0
+	pm.anim_offset_max = 1.0
+	# Just enough to stop the rope being a smooth tube. Fire curls — but this
+	# displaces particles for their whole half-second, so anything stronger
+	# walks them out of the line and tears the rope into disconnected tufts.
+	pm.turbulence_enabled = true
+	pm.turbulence_noise_strength = 0.45
+	pm.turbulence_noise_scale = 2.6
+	pm.turbulence_influence_min = 0.04
+	pm.turbulence_influence_max = 0.16
+	# Starts near full size rather than at a point: a jet that ramps up from
+	# nothing leaves a gap between the exhaust and the flame.
 	var curve := Curve.new()
-	curve.add_point(Vector2(0.0, 0.4))
-	curve.add_point(Vector2(1.0, 1.5))
+	curve.add_point(Vector2(0.0, 0.62))
+	curve.add_point(Vector2(0.25, 1.0))
+	curve.add_point(Vector2(1.0, 1.45))
 	var ct := CurveTexture.new()
 	ct.curve = curve
 	pm.scale_curve = ct
+	# White-hot for the first few frames only. Most of the rope's length is spent
+	# between MID and TAIL, which is what keeps it orange down the pitch instead
+	# of fading out through white.
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.62, 0.82, 1.0, 0.0))
-	grad.set_color(1, Color(0.16, 0.33, 0.85, 0.0))
-	grad.add_point(0.12, Color(0.55, 0.78, 1.0, 0.30))
+	grad.set_color(0, Color(1.0, 0.90, 0.55, 0.0))
+	grad.set_color(1, Color(FLAME_TAIL.r, FLAME_TAIL.g, FLAME_TAIL.b, 0.0))
+	# Opaque almost immediately, then most of the length spent getting from
+	# amber to red. A slow fade-in leaves a couple of metres of thin haze
+	# between the car and its own flame, which is the one stretch that should be
+	# the hottest thing on the pitch.
+	grad.add_point(0.03, Color(1.0, 0.88, 0.48, 0.9))
+	grad.add_point(0.14, Color(1.0, 0.66, 0.16, 0.88))
+	grad.add_point(0.38, Color(FLAME_MID.r, FLAME_MID.g, FLAME_MID.b, 0.78))
+	grad.add_point(0.66, Color(0.92, 0.22, 0.02, 0.5))
+	grad.add_point(0.88, Color(0.5, 0.09, 0.01, 0.2))
 	var gt := GradientTexture1D.new()
 	gt.gradient = grad
 	pm.color_ramp = gt
-	_plume.process_material = pm
+	_trail.process_material = pm
 
-	_plume.draw_pass_1 = _sprite(
-		0.5, FxSprites.puff(0.5, 3), BaseMaterial3D.BLEND_MODE_ADD
+	# Defaults to 1, and assigning draw_pass_2 past the end is an error rather
+	# than a resize.
+	_trail.draw_passes = 2
+	_trail.draw_pass_1 = _sprite(
+		0.7, FxSprites.flame_sheet(), BaseMaterial3D.BLEND_MODE_MIX, 1.0, 2
 	)
-	add_child(_plume)
+	# Kept faint: ten of these overlap at any point down the rope, and the sum
+	# is a haze over the fire rather than a glow around it if each one is
+	# anything but slight.
+	_trail.draw_pass_2 = _sprite(
+		0.9, FxSprites.glow(2.2), BaseMaterial3D.BLEND_MODE_ADD, 0.05
+	)
+	_continuous(_trail)
+	add_child(_trail)
 
 
 ## The orange sparks that fall out of the back of a boosting car. These are the
@@ -217,23 +338,24 @@ func _build_plume() -> void:
 ## a glow, and a glow is what every engine in every game has.
 func _build_embers() -> void:
 	_embers = GPUParticles3D.new()
-	_embers.amount = 28
-	_embers.lifetime = 0.6
+	_embers.amount = 44
+	_embers.lifetime = 0.75
 	_embers.local_coords = false
 	_embers.emitting = false
+	_embers.position = NOZZLE
 
 	var pm := ParticleProcessMaterial.new()
 	pm.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	pm.emission_sphere_radius = 0.06
 	pm.direction = Vector3(0, 0, -1)
-	pm.spread = 20.0
-	pm.initial_velocity_min = 3.0
-	pm.initial_velocity_max = 7.0
+	pm.spread = 24.0
+	pm.initial_velocity_min = 3.5
+	pm.initial_velocity_max = 8.5
 	pm.gravity = Vector3(0, -2.2, 0)
 	pm.damping_min = 1.5
 	pm.damping_max = 3.5
-	pm.scale_min = 0.5
-	pm.scale_max = 1.0
+	pm.scale_min = 0.45
+	pm.scale_max = 1.1
 	var curve := Curve.new()
 	curve.add_point(Vector2(0.0, 1.0))
 	curve.add_point(Vector2(0.7, 0.8))
@@ -253,6 +375,7 @@ func _build_embers() -> void:
 	_embers.draw_pass_1 = _sprite(
 		0.075, FxSprites.glow(2.4), BaseMaterial3D.BLEND_MODE_ADD
 	)
+	_continuous(_embers)
 	add_child(_embers)
 
 
@@ -500,12 +623,20 @@ func _process(dt: float) -> void:
 		return
 	var boosting := _car.is_boosting and _car.active
 	_emit(_flame, boosting)
-	_emit(_plume, boosting)
+	_emit(_trail, boosting)
 	_emit(_embers, boosting)
 	_emit(_streaks, _car.supersonic and _car.active)
 
+	var here := global_position
+	var moved := here.distance_to(_moved_from) if _moved_seen else 0.0
+	_moved_from = here
+	_moved_seen = true
+	if boosting:
+		_smear(_flame, moved, CORE_SEED)
+		_smear(_trail, moved, TRAIL_SEED)
+
 	# The light lags the flame slightly so a tap reads as a flare, not a strobe.
-	var want := 2.6 if boosting else 0.0
+	var want := 3.4 if boosting else 0.0
 	_light_energy = lerpf(_light_energy, want, clampf(dt * (18.0 if boosting else 9.0), 0.0, 1.0))
 	_light.light_energy = _light_energy
 	_light.visible = _light_energy > 0.02
@@ -517,6 +648,56 @@ func _process(dt: float) -> void:
 func _emit(p: GPUParticles3D, on: bool) -> void:
 	if p.emitting != on:
 		p.emitting = on
+
+
+## Stretch one frame's emission along the ground the car covered during it.
+##
+## Godot hands the emitter's transform to the GPU once per RENDERED frame, so
+## every particle born in that frame is born at the same point in the world. A
+## car at 21 m/s therefore lays its boost down as one clump per frame with a
+## clear gap after it — a string of orange baubles rather than a rope — and it
+## gets worse the faster the car goes and the slower the machine runs, which is
+## the wrong way round for a boost. Nothing about `amount` fixes it; more
+## particles only make each bauble denser.
+##
+## Stretching the emission box along the car's own axis by the distance covered
+## puts that frame's particles down as a segment instead of a point, and
+## consecutive segments meet end to end at any speed and any framerate.
+##
+## `moved` is measured from where this node actually was last frame rather than
+## computed as speed x delta, which is the same number in a normal match and not
+## the same number under `Engine.time_scale` — `_process` gets an unscaled delta
+## while the car advances at the scaled rate, so the arithmetic version
+## over-smears by 1/time_scale and the slow-motion capture that exists to
+## photograph this effect is the one case that misreports it.
+##
+## The box is oriented with the CAR rather than with its velocity, so a full
+## powerslide lays the smear a few degrees off the true path — at the angles a
+## car actually slides at, that is well inside the width of the flame.
+func _smear(p: GPUParticles3D, moved: float, seed_half: float) -> void:
+	var pm := p.process_material as ParticleProcessMaterial
+	if pm == null:
+		return
+	# Clamped, because a respawn or a demo moves this node the length of the
+	# pitch between two frames and an unclamped smear would draw the resulting
+	# flame across all of it.
+	var half := clampf(moved * 0.5, seed_half, SMEAR_MAX_HALF)
+	pm.emission_box_extents = Vector3(seed_half, seed_half, half)
+
+
+## Take a particle system off the 30 Hz simulation clock.
+##
+## `fixed_fps` defaults to 30, which is fine for anything whose emitter is
+## roughly still and wrong for everything back here. These systems emit in
+## global space from a car doing 21 m/s, so thirty ticks a second lays their
+## particles down in thirty discrete clumps a second — a bead every seventy
+## centimetres — and no amount of raising `amount` closes the gaps, it just puts
+## more particles in each bead. At 0 the system steps on the render frame and
+## the emission is continuous, which is the difference between a rope of fire
+## and a string of orange baubles.
+static func _continuous(p: GPUParticles3D) -> void:
+	p.fixed_fps = 0
+	p.interpolate = false
 
 
 ## Smoke whenever the rear tyres are scrubbing sideways, and a puff on a heavy

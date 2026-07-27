@@ -80,6 +80,72 @@ static func glow(power := 3.0) -> ImageTexture:
 	return _store(key, img)
 
 
+## Four scraps of fire in a 2x2 sheet, for the boost.
+##
+## `glow` was doing this job and it is the wrong shape — a smooth radial falloff
+## is a light source, and a hundred light sources overlapping is a smear. Fire
+## has an OUTLINE. So the noise here warps the RADIUS rather than multiplying
+## the alpha the way `puff` does: eroding alpha thins a circle into a moth-eaten
+## circle, while moving the rim in and out pushes licks off the edge and bites
+## notches into it, and the silhouette stops being a circle at all. The warp
+## fades out toward the middle so the core survives — a hole in the hot part
+## reads as a smoke ring.
+##
+## Four of them rather than one because a particle system draws its sprite over
+## and over, and one flame shape repeated two hundred times down a trail is not
+## read as fire, it is read as beads on a string. The draw material splits this
+## into frames and every particle picks one at random, which is enough variety
+## that the eye stops finding the repeat.
+##
+## Cells are addressed in the sheet's own pixel space but the shape is built
+## from cell-local coordinates, so each is an independent 128 px sprite that
+## happens to be stored next to its siblings.
+static func flame_sheet() -> ImageTexture:
+	const KEY := "flame_sheet"
+	if _cache.has(KEY):
+		return _cache[KEY]
+
+	var img := Image.create(SIZE * 2, SIZE * 2, true, Image.FORMAT_RGBA8)
+	for cell in 4:
+		var ox := (cell % 2) * SIZE
+		var oy := (cell / 2) * SIZE
+		var noise := FastNoiseLite.new()
+		noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		noise.seed = 17 + cell * 91
+		# Low, so the licks are a few big lobes rather than fine fringe. A
+		# particle is about thirty pixels on screen out on the pitch, and detail
+		# finer than this is gone to the mip chain before anyone sees it —
+		# leaving a smooth disc, which is the one shape this must not be.
+		noise.frequency = 0.011 + cell * 0.002
+		noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+		noise.fractal_octaves = 4
+		noise.fractal_gain = 0.5
+		for y in SIZE:
+			for x in SIZE:
+				var r := _radius(x, y)
+				var n := noise.get_noise_2d(float(x), float(y)) * 0.5 + 0.5
+				var rr := r * (1.0 + (n - 0.5) * 1.15 * smoothstep(0.05, 0.7, r))
+				if rr >= 1.0:
+					img.set_pixel(ox + x, oy + y, Color(1, 1, 1, 0))
+					continue
+				# Flat-bodied on purpose. A bright centre makes every particle
+				# read as a little sphere, and two hundred little spheres in a
+				# line is a bead necklace — which is exactly what this looked
+				# like with the core turned up. Nearly all of the alpha is in
+				# the body, so neighbours melt into one mass and the silhouette
+				# of that mass is the noise-torn rim.
+				var body := smoothstep(1.0, 0.25, rr)
+				var core := pow(clampf(1.0 - rr * 1.4, 0.0, 1.0), 2.2)
+				var a := clampf(body * 0.74 + core * 0.36, 0.0, 1.0)
+				a *= smoothstep(1.0, 0.74, rr)
+				# The colour ramp tints the whole particle; this is what keeps
+				# the middle of each lick hotter than its edge once tinted.
+				var v := lerpf(0.74, 1.0, clampf(core * 1.2, 0.0, 1.0))
+				img.set_pixel(ox + x, oy + y, Color(v, v, v, a))
+	img.generate_mipmaps()
+	return _store(KEY, img)
+
+
 ## A vertical lozenge, for anything that should read as motion rather than as a
 ## dot: the supersonic streaks and the speed lines off the ball.
 static func streak() -> ImageTexture:
