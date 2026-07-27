@@ -106,14 +106,20 @@ static func streak() -> ImageTexture:
 ## either, which spends most of its alpha budget on the feather and comes out as
 ## a grey smudge over a lit pitch.
 static func blob(core := 0.55) -> ImageTexture:
-	var key := "blob:%.2f" % core
+	# `core` is a fraction of the half-width and the smoothstep runs DOWN from
+	# the rim to it, so a value at or past 1.0 inverts the sprite: transparent
+	# in the middle, opaque in the corners, which on a car reads as the vehicle
+	# gliding over a rectangle. Clamped rather than asserted — a shadow that is
+	# the wrong softness is a far better failure than one that is a box.
+	var c := clampf(core, 0.0, 0.95)
+	var key := "blob:%.2f" % c
 	if _cache.has(key):
 		return _cache[key]
 
 	var img := Image.create(SIZE, SIZE, true, Image.FORMAT_RGBA8)
 	for y in SIZE:
 		for x in SIZE:
-			var a := smoothstep(1.0, core, _radius(x, y))
+			var a := smoothstep(1.0, c, _radius(x, y))
 			img.set_pixel(x, y, Color(0, 0, 0, a))
 	img.generate_mipmaps()
 	return _store(key, img)

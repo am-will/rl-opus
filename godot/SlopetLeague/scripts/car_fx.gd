@@ -372,7 +372,7 @@ func _build_tyres() -> void:
 ## docs/GODOT_FIDELITY_SCOPE_V2.md A1). A painted blob is the same answer Rocket
 ## League itself uses, and it does more for grounding than the real shadows do.
 func _build_shadow() -> void:
-	_shadow = GroundMark.shadow(1.7)
+	_shadow = GroundMark.shadow(0.4)
 	add_child(_shadow)
 
 
