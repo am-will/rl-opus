@@ -96,6 +96,27 @@ class Canvas:
         d = np.hypot(X - cx, Y - cy) - r
         self._blend(sl, self.fill_cover(d), colour, emit)
 
+    def lobed(self, cx, cy, rfun, colour, emit=None):
+        """Fill a shape whose radius is a function of angle.
+
+        `rfun` takes an array of angles and returns the outline radius at each,
+        so the caller supplies the profile and this only rasterises it -- which
+        is what lets the boost plate's texture and its mesh share one outline
+        (`const.pad_lobe`) instead of drifting apart.
+        """
+        r_max = float(np.max(rfun(np.linspace(0.0, 2 * math.pi, 256))))
+        win = self._win(cx - r_max, cx + r_max, cy - r_max, cy + r_max,
+                        pad=2 * self.aa)
+        if win is None:
+            return
+        sl, X, Y = win
+        dx, dy = X - cx, Y - cy
+        # Radial, not a true distance field: exact on the arms and a fraction
+        # of a pixel optimistic where the outline turns hardest. At the notches
+        # of a 512 px pad that is invisible.
+        d = np.hypot(dx, dy) - rfun(np.arctan2(dy, dx))
+        self._blend(sl, self.fill_cover(d), colour, emit)
+
     def ring(self, cx, cy, r, width, colour, emit=None, a0=None, a1=None,
              dash=None, gap=None):
         outer = r + width

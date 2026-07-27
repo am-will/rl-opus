@@ -90,14 +90,14 @@ def main():
         check("frame reaches floor", min(p.z for p in one), -60.0, tol=60.0)
 
     # Boost pads must be flat: no lip for a car to catch on, and no collision.
-    for nm, limit in (("CF_BoostDecal", 3.0), ("CF_BoostCore", 3.0)):
+    for nm, limit in (("CF_BoostDecal", 3.0), ("CF_BoostGlow", 3.0)):
         pv = world_verts(nm)
         if pv:
             check(f"{nm[3:]} max height", max(p.z for p in pv), 0.0, tol=limit)
 
     import bpy as _bpy
-    decor = ("CF_BoostDecal", "CF_BoostCore", "CF_BoostBeam", "CF_Ball",
-             "CF_GoalFrame", "CF_GoalTrim", "CF_GoalNet")
+    decor = ("CF_BoostDecal", "CF_BoostGlow", "CF_BoostBeam", "CF_BoostOrb",
+             "CF_Ball", "CF_GoalFrame", "CF_GoalTrim", "CF_GoalNet")
     bad = [n for n in decor
            if _bpy.data.objects.get(n) is not None
            and _bpy.data.objects[n].get("collision", True)]
@@ -119,7 +119,7 @@ def main():
     # Pads are hex prisms, so their vertices sit on the circumference rather
     # than at the centre -- match within the pad radius, not a point tolerance.
     pts = []
-    for nm in ("CF_BoostDecal", "CF_BoostCore", "CF_BoostBeam"):
+    for nm in ("CF_BoostDecal", "CF_BoostGlow", "CF_BoostBeam"):
         ob = bpy.data.objects.get(nm)
         if ob is not None:
             m = ob.matrix_world

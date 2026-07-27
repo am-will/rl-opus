@@ -22,6 +22,9 @@ const SHOTS := {
 	"ceiling":   [Vector3(0, 3300, 1930),       Vector3(0, -1400, 150),  24.0, 0.0],
 	"broadcast": [Vector3(3620, -1500, 1880),   Vector3(-700, 1200, 240), 30.0, 0.0],
 	"aerial":    [Vector3(17000, -21000, 20500), Vector3(0, -400, 1200), 38.0, 0.0],
+	"padbig":    [Vector3(2870, -640, 240),     Vector3(3584, 40, 150),  42.0, 0.0],
+	"padsmall":  [Vector3(1330, -2760, 165),    Vector3(1788, -2300, 40), 42.0, 0.0],
+	"padrow":    [Vector3(-500, -3900, 105),    Vector3(1500, -1200, 120), 24.0, 0.0],
 	# Not a Blender shot. A long lens straight at the centre spot, for judging
 	# car size against the ball without perspective doing the arguing.
 	"scale":     [Vector3(0, -1150, 130),       Vector3(0, 0, 75),       42.0, 0.0],

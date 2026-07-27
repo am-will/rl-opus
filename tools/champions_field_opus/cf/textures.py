@@ -378,6 +378,98 @@ def build_board(texdir, w=2048, hpx=512):
             _save(cv.emit_rgba(), os.path.join(texdir, "board_emit.png"), "CF_board_emit"))
 
 
+# ---------------------------------------------------------------------------
+# Boost pads
+# ---------------------------------------------------------------------------
+
+# Sampled off the reference stills: the plate is a light grey deck panel, the
+# recess it sits in is near-black, and everything that glows is the same
+# sodium orange running from a white-hot core out to a deep amber rim.
+PAD_PLATE = (0.400, 0.415, 0.430)
+PAD_PLATE_HI = (0.560, 0.580, 0.600)
+PAD_DARK = (0.014, 0.016, 0.022)
+PAD_HOT = (1.000, 0.360, 0.040)
+PAD_CORE = (1.000, 0.720, 0.330)
+
+
+def _pad_big(cv, cx):
+    """The 100-boost plate: four-armed star, four vents, a ringed core."""
+    lobe = lambda t, s=1.0: C.pad_lobe(t, s, m=np)  # noqa: E731
+
+    cv.lobed(cx, 0.0, lambda t: lobe(t, 0.965), PAD_PLATE_HI)
+    cv.lobed(cx, 0.0, lambda t: lobe(t, 0.885), PAD_PLATE)
+
+    # The recess the core sits in, with a machined lip around it.
+    cv.disc(cx, 0.0, 0.615, PAD_DARK)
+    cv.ring(cx, 0.0, 0.615, 0.045, PAD_PLATE_HI)
+
+    # Vents: a slot in each arm, glowing at the bottom of a dark recess. These
+    # are where the curtains in props.build_boost rise from.
+    for k in range(4):
+        a = math.tau * k / 4
+        cv.ring(cx, 0.0, 0.755, 0.235, PAD_DARK, a0=a - 0.40, a1=a + 0.40)
+        cv.ring(cx, 0.0, 0.755, 0.150, PAD_HOT, emit=1.0, a0=a - 0.32, a1=a + 0.32)
+        cv.ring(cx, 0.0, 0.755, 0.055, PAD_CORE, emit=1.0, a0=a - 0.30, a1=a + 0.30)
+        # Chevron pointing out along the arm, past the vent.
+        ca, sa = math.cos(a), math.sin(a)
+        tip, back, half = 0.945, 0.875, 0.075
+        cv.segments([(cx + ca * back - sa * half, sa * back + ca * half),
+                     (cx + ca * tip, sa * tip),
+                     (cx + ca * back + sa * half, sa * back - ca * half)],
+                    0.035, PAD_DARK)
+
+    # Core: two rings and a white-hot centre.
+    cv.ring(cx, 0.0, 0.500, 0.090, PAD_HOT, emit=1.0)
+    cv.ring(cx, 0.0, 0.355, 0.045, (1.0, 0.50, 0.10), emit=0.85)
+    cv.disc(cx, 0.0, 0.235, PAD_CORE, emit=1.0)
+
+
+def _pad_small(cv, cx):
+    """The 12-boost plate: a hex deck panel with a small lit core."""
+    cv.disc(cx, 0.0, 0.905, PAD_PLATE_HI)
+    cv.disc(cx, 0.0, 0.815, PAD_PLATE)
+    cv.disc(cx, 0.0, 0.545, PAD_DARK)
+    cv.ring(cx, 0.0, 0.545, 0.040, PAD_PLATE_HI)
+
+    # Six short vents on the hex axes -- the small pad's only glowing edge.
+    for k in range(6):
+        a = math.tau * k / 6
+        cv.ring(cx, 0.0, 0.700, 0.130, PAD_DARK, a0=a - 0.26, a1=a + 0.26)
+        cv.ring(cx, 0.0, 0.700, 0.070, PAD_HOT, emit=0.9, a0=a - 0.21, a1=a + 0.21)
+
+    cv.ring(cx, 0.0, 0.430, 0.085, PAD_HOT, emit=1.0)
+    cv.disc(cx, 0.0, 0.215, PAD_CORE, emit=1.0)
+
+
+def build_boost(texdir, px=512):
+    """Both pad faces in one atlas: big on the left half, small on the right.
+
+    Drawn in pad-radius units -- each cell spans -1..1 with the pad centred --
+    so one map serves both sizes and the UVs in `props.build_boost` are just
+    each pad's bounding box mapped into its half.
+
+    This exists because the pads used to be flat-coloured n-gons: a white ring
+    and a blank orange middle, with the whole read of the thing carried by a
+    tapered column of emission above it. Painting the plate instead puts the
+    detail where the reference has it -- on the deck -- and lets the glow above
+    be a suggestion rather than the entire pad.
+    """
+    cv = Canvas(2 * px, px, -2.0, 2.0, -1.0, 1.0, base=PAD_DARK, op=1.0)
+    _pad_big(cv, -1.0)
+    _pad_small(cv, 1.0)
+
+    # Scuffing, mostly so the plate does not read as flat vinyl under a
+    # floodlight. Albedo only: the vents stay clean.
+    wear = fbm(px, 2 * px, 10, 20, octaves=3, seed=31)
+    cv.rgb *= (0.86 + 0.28 * wear)[..., None]
+    cv.rgb[:] = np.clip(cv.rgb, 0.0, 1.0)
+
+    return (_save(cv.to_rgba(), os.path.join(texdir, "boost_col.png"),
+                  "CF_boost_col"),
+            _save(cv.emit_rgba(), os.path.join(texdir, "boost_emit.png"),
+                  "CF_boost_emit"))
+
+
 def build_all(texdir, quick=False):
     if quick:
         turf = build_turf(texdir, w=1024, h=1500)
@@ -385,11 +477,13 @@ def build_all(texdir, quick=False):
         hexn = build_hex(texdir, px=3)
         board = build_board(texdir, w=512, hpx=128)
         ball = build_ball_skin(texdir, px=3)
+        boost = build_boost(texdir, px=192)
     else:
         turf = build_turf(texdir)
         wall = build_wall(texdir)
         hexn = build_hex(texdir)
         board = build_board(texdir)
         ball = build_ball_skin(texdir)
+        boost = build_boost(texdir)
     return {"turf": turf, "wall": wall, "hex": hexn, "board": board,
-            "ball": ball}
+            "ball": ball, "boost": boost}

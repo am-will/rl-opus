@@ -43,6 +43,34 @@ BIG_PAD_H = 168.0
 SMALL_PAD_R = 144.0
 SMALL_PAD_H = 165.0
 
+# The 100-boost plate is a four-armed star, not a disc: arms reach BIG_PAD_R at
+# the cardinals and the outline pulls back to PAD_NOTCH of that on the
+# diagonals. PAD_SHARP < 1 keeps the arms plump rather than spiked.
+#
+# The plate outline and the art painted on it have to agree exactly or the
+# texture's dark rim lands off the mesh edge, so both come from here:
+# `props.build_boost` builds the polygon with it and `textures.build_boost`
+# paints with it.
+PAD_NOTCH = 0.66
+PAD_SHARP = 0.55
+
+
+def pad_lobe(theta, r_tip, m=math):
+    """Big-pad plate radius at `theta`.
+
+    `m` is the maths module -- pass `numpy` to evaluate over an array of
+    angles, which is how the texture stamps the same outline.
+    """
+    return r_tip * (PAD_NOTCH
+                    + (1.0 - PAD_NOTCH) * abs(m.cos(2.0 * theta)) ** PAD_SHARP)
+
+
+# How far the orb floats above a big pad, and how big it is (uu). Sized off the
+# reference stills: a little under ball radius, hanging about a ball's diameter
+# and a half over the plate, clear of anything a car can reach on the ground.
+ORB_R = 68.0
+ORB_Z = 300.0
+
 # (x, y, z, is_big) -- all 34, in RLBot index order.
 BOOST_PADS = [
     (0.0, -4240.0, 70.0, False),

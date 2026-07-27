@@ -136,7 +136,7 @@ def main():
         c_light = U.collection("Lighting", root)
 
         props.build_goals(c_props, props.goal_materials(tex["hex"]))
-        props.build_boost(c_props, props.boost_materials())
+        props.build_boost(c_props, props.boost_materials(tex["boost"]))
         props.build_ball(c_props, tex["ball"])
         if not args.no_crowd:
             stands.build(c_stands)

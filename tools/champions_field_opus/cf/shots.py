@@ -28,6 +28,13 @@ SHOTS = {
     "broadcast": ((3620, -1500, 1880), (-700, 1200, 240), 30, None),
     # Money shot: outside and above, the whole bowl.
     "aerial":    ((17000, -21000, 20500), (0, -400, 1200), 38, None),
+    # Close on the side 100 pad: plate, vents, plume and orb in one frame.
+    "padbig":    ((2870, -640, 240), (3584, 40, 150), 42, None),
+    # A 12 in the foreground with a 100 behind it, for the size relationship.
+    "padsmall":  ((1330, -2760, 165), (1788, -2300, 40), 42, None),
+    # Car height across the pads in the blue half, which is how they are
+    # actually seen: a row of small ones and a 100 out at the corner.
+    "padrow":    ((-500, -3900, 105), (1500, -1200, 120), 24, None),
 }
 
 
