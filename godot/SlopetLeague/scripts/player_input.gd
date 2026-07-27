@@ -67,9 +67,12 @@ var _pad := -1
 
 
 static func setup_actions() -> void:
+	# Idempotent: a second Game in the same process would otherwise bind every
+	# key twice.
 	for action in KEYS.keys():
 		if not InputMap.has_action(action):
 			InputMap.add_action(action, 0.0)
+		InputMap.action_erase_events(action)
 		InputMap.action_set_deadzone(action, 0.0)
 		for kc in KEYS[action]:
 			var ev := InputEventKey.new()
