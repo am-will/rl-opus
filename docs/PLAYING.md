@@ -71,8 +71,16 @@ godot --path godot/SlopetLeague --rendering-driver metal --resolution 1600x900 \
     --script tests/shoot.gd -- --plan wall --out "$PWD/renders/game"
 ```
 
-Plans are `kickoff`, `drift`, `flip`, `wall`, `aerial`, `scale`. To photograph a
-live match instead, `-- --capture <path> --capture-after <frames>`.
+Plans are `kickoff`, `drift`, `flip`, `wall`, `aerial`, `boost`, `goal`, `lob`,
+`hud` and `scale`. To photograph a live match instead, `-- --capture <path>
+--capture-after <frames>`.
+
+This scene captures at about 13 fps, which matters for anything emitted in world
+space from a moving car. The boost trail lays its particles down once per
+rendered frame, so at capture speed they land 1.6 m apart and it photographs
+chunkier than it plays. `--timescale 0.22` runs the match slowly against a
+renderer still going flat out, which is what a 60 fps machine sees; shots are
+keyed to physics ticks, so only the wall-clock changes.
 
 ## Knobs
 

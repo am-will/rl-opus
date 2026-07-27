@@ -84,6 +84,22 @@ const PLANS := {
 			{"tick": 175, "name": "15_aerial"},
 		],
 	},
+	# Flat out, then lean into a long turn. The straight is for the flame itself
+	# and the turn is for the trail: a boost trail that is welded to the car
+	# looks identical to one left in the world until the car changes direction.
+	"boost": {
+		"spawn": {"x": 0.0, "z": -38.0, "yaw": 0.0, "boost": 100.0},
+		"ball": {"p": [0.0, 0.9325, 34.0]},
+		"input": [
+			{"from": 0, "to": 130, "throttle": 1.0, "boost": true},
+			{"from": 130, "to": 400, "throttle": 1.0, "steer": 0.8, "boost": true},
+		],
+		"shots": [
+			{"tick": 70, "name": "30_boost_straight"},
+			{"tick": 190, "name": "31_boost_turn"},
+			{"tick": 260, "name": "32_boost_turn"},
+		],
+	},
 	# Score, and photograph the blast.
 	"goal": {
 		"spawn": {"x": 2.0, "z": 44.0, "yaw": 0.0, "boost": 100.0},
@@ -149,6 +165,17 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	var name := _arg(args, "--plan", "kickoff")
 	_out = _arg(args, "--out", ProjectSettings.globalize_path("user://"))
+	# `--timescale 0.25` runs the match at a quarter speed against a renderer
+	# that keeps drawing as fast as it can, which is the only way to photograph
+	# what a 60 fps machine sees. This scene captures at about 13 fps, and
+	# anything emitted in world space from a moving car — the boost trail above
+	# all — is laid down once per RENDERED frame, so at capture speed its
+	# particles land 1.6 m apart and it photographs far patchier than it plays.
+	# Shots are keyed to physics ticks, so the framing is unaffected; the run
+	# just takes proportionally longer in wall-clock.
+	Engine.time_scale = maxf(0.01, float(_arg(args, "--timescale", "1.0")))
+	if Engine.time_scale != 1.0:
+		print("[timescale] ", Engine.time_scale)
 	if not PLANS.has(name):
 		push_error("no plan '%s'; have %s" % [name, ", ".join(PLANS.keys())])
 		quit(2)
