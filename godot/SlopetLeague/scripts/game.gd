@@ -491,7 +491,14 @@ func _handle_one_shots() -> void:
 		if hud:
 			hud.toast("Free play" if practice else "5:00 match")
 	if Input.is_action_just_pressed("rl_infinite_boost"):
-		player_car.infinite_boost = not player_car.infinite_boost
+		# Only the player's car: the point of the mode is practising aerials and
+		# kickoffs without a boost run, not handing the bot the same gift.
+		var on := not player_car.infinite_boost
+		player_car.infinite_boost = on
+		# The dial reads ∞ either way, but with a full tank the change is a
+		# single glyph in the corner and easy to miss.
+		if hud:
+			hud.toast("Infinite boost on" if on else "Infinite boost off")
 	if Input.is_action_just_pressed("rl_toggle_hud") and hud:
 		hud.visible = not hud.visible
 	if Input.is_action_just_pressed("rl_free_cam"):
